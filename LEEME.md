@@ -6,6 +6,10 @@ Probada en SolidWorks 2024 (revision 32.3). Las funciones de la API usadas exist
 2025/2026, pero **no se ha probado en esas versiones**.
 
 ## Instalacion
+**En otro equipo basta copiar UN archivo: `TarugosPro.swp`** (lleva dentro todos los modulos, la clase y los formularios).
+Abrirlo con Herramientas > Macro > Editar... Lo de `src/` y `formularios/` solo hace falta para modificar el codigo o reconstruir el .swp.
+Si se cambia el codigo de `src/`, hay que volver a guardar el .swp desde el editor de SolidWorks para que no quede desfasado.
+
 1. SolidWorks: Herramientas > Macro > Editar... y abrir `TarugosPro.swp` (esta carpeta).
 2. Para ejecutar: abre un ensamblaje y, en el editor, F5 > `Tarugos_Principal`
    (o Herramientas > Macro > Ejecutar... y asigna la macro a un boton si quieres).
