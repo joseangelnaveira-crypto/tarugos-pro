@@ -480,6 +480,7 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     md.ClearSelection2 True
     md.Extension.SelectByID2 "", "FACE", pp.X, pp.Y, pp.Z, False, 0, Nothing, 0
     Dim okSel As Boolean, sf As SldWorks.Face2, vn As Variant
+    Dim selOk As Boolean
     If md.SelectionManager.GetSelectedObjectCount2(-1) >= 1 Then
         If md.SelectionManager.GetSelectedObjectType3(1, -1) = swSelFACES Then
             Set sf = md.SelectionManager.GetSelectedObject6(1, -1)
@@ -490,12 +491,15 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     If Not okSel Then
         Anota "AVISO " & jb.Nombre & ": SelectByID2 no devolvio la cara esperada; se usa la cara encontrada en la pieza"
         md.ClearSelection2 True
-        f.Select4 False, Nothing
+        selOk = f.Select4(False, Nothing)
     End If
     md.SketchManager.InsertSketch True
     Dim sk As SldWorks.Sketch
     Set sk = md.SketchManager.ActiveSketch
-    If sk Is Nothing Then Anota "ERROR " & jb.Nombre & ": no se pudo abrir el croquis": Exit Function
+    If sk Is Nothing Then
+        Diagnostica md, f, pp, nn, selOk
+        Anota "ERROR " & jb.Nombre & ": no se pudo abrir el croquis": Exit Function
+    End If
     Dim ps As TV3, m2s As SldWorks.MathTransform
     Set m2s = sk.ModelToSketchTransform
     ps = TrP(m2s, pp)
@@ -567,3 +571,19 @@ Private Function CortaCiego(md As SldWorks.ModelDoc2, ByVal prof As Double, ByVa
         False, False, False, False, 0, 0, False, False, False, False, False, True, True, _
         False, False, False, 0, 0, False, False)
 End Function
+
+' DIAGNOSTICO TEMPORAL (quitar cuando se resuelva): estado cuando InsertSketch no abre croquis
+Private Sub Diagnostica(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp As TV3, nn As TV3, ByVal selOk As Boolean)
+    On Error Resume Next
+    Dim r As String, v As Variant, ad As SldWorks.ModelDoc2
+    Set ad = Application.SldWorks.ActiveDoc
+    r = "   DIAG pieza=" & md.GetTitle & " activa=" & ad.GetTitle & " mismoDoc=" & (ad Is md) & " tipo=" & md.GetType
+    r = r & " | vista=" & Not (md.GetFirstModelView Is Nothing) & " | selMgr=" & md.SelectionManager.GetSelectedObjectCount2(-1)
+    r = r & " tipoSel=" & md.SelectionManager.GetSelectedObjectType3(1, -1) & " | Select4=" & selOk
+    r = r & " | caraNula=" & (f Is Nothing) & " | pp(mm)=" & Format(pp.X * 1000, "0.00") & ";" & Format(pp.Y * 1000, "0.00") & ";" & Format(pp.Z * 1000, "0.00")
+    r = r & " nn=" & Format(nn.X, "0.00") & ";" & Format(nn.Y, "0.00") & ";" & Format(nn.Z, "0.00")
+    v = f.GetBox
+    r = r & " | caraBox(mm)=" & Format(v(0) * 1000, "0.0") & ";" & Format(v(1) * 1000, "0.0") & ";" & Format(v(2) * 1000, "0.0") & " - " & Format(v(3) * 1000, "0.0") & ";" & Format(v(4) * 1000, "0.0") & ";" & Format(v(5) * 1000, "0.0")
+    r = r & " | cuerpos=" & UBound(CType2(md).GetBodies2(swSolidBody, False)) + 1 & " | croquisAbierto=" & Not (md.SketchManager.ActiveSketch Is Nothing)
+    Anota r
+End Sub
