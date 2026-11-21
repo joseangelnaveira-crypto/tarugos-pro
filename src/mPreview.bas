@@ -1,0 +1,207 @@
+Attribute VB_Name = "mPreview"
+Option Explicit
+Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
+'==============================================================================
+' mPreview - FASE 3: previsualizacion 3D temporal de los tarugos.
+'
+' Cada tarugo se muestra como un cilindro TEMPORAL (Modeler.CreateBodyFromCyl +
+' Body2.Display3 con swTempBodySelectable). No modifica ninguna pieza.
+' SolidWorks borra los cuerpos temporales en cada repintado, asi que la clase
+' cEventos llama a DibujaTodo desde RepaintPostNotify.
+'
+' Colores:  verde = activo | naranja = union dudosa forzada | rojo = eliminado
+'           amarillo = seleccionado
+'==============================================================================
+
+Public Type TFlat
+    U As Long                ' indice de union
+    K As Long                ' indice de tarugo dentro de la union
+    Cuerpo As SldWorks.Body2
+    Sel As Boolean
+    Grande As Boolean       ' el cuerpo temporal actual esta dibujado en tamano 'seleccionado'
+End Type
+
+Public Flat() As TFlat
+Public NFlat As Long
+
+Public swAppP As SldWorks.SldWorks
+Public mdlP As SldWorks.ModelDoc2
+Public Eventos As cEventos
+Public Formulario As frmRevision
+
+Private compBase As SldWorks.Component2
+Private modeler As SldWorks.Modeler
+Private invCB As SldWorks.MathTransform     ' inversa de la transformacion del componente de referencia
+Const FACTOR_NORMAL As Double = 1.6     ' los cilindros se dibujan mas gruesos que el taladro real
+Const FACTOR_SEL As Double = 3.5        ' el tarugo seleccionado se agranda para localizarlo
+Private modoOriginal As Long
+Private modoCambiado As Boolean
+Private dibujando As Boolean           ' proteccion contra reentrada en DibujaTodo
+Private ultimoDibujo As Double     ' componente de referencia para Display3 (si hace falta)
+Private errorDisplay As String
+Public Llamadas As Long                     ' numero de repintados atendidos (diagnostico)
+
+Private Function RGBl(ByVal r As Long, ByVal g As Long, ByVal b As Long) As Long
+    RGBl = r + g * 256 + b * 65536
+End Function
+
+'------------------------------------------------------------------------------
+' Crea los cuerpos temporales (uno por tarugo calculado)
+'------------------------------------------------------------------------------
+Public Sub ConstruyePreview(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
+    Set swAppP = app
+    Set mdlP = md
+    NFlat = 0
+    Erase Flat
+
+    Set modeler = app.GetModeler
+
+    ' Display3 dibuja el cuerpo temporal en el espacio del COMPONENTE de referencia (le aplica su
+    ' transformacion). Si no se compensa, los cilindros quedan fuera de sitio o no se ven.
+    Set compBase = Nothing: Set invCB = Nothing
+    Dim ip As Long
+    For ip = 0 To NPiezas - 1
+        If Piezas(ip).Estado = "OK" Then
+            Set compBase = Piezas(ip).Comp
+            Exit For
+        End If
+    Next ip
+    If Not compBase Is Nothing Then Set invCB = compBase.GetTotalTransform(False).Inverse
+
+    Dim u As Long, k As Long
+    For u = 0 To NUniones - 1
+        For k = 0 To Uniones(u).NT - 1
+            ReDim Preserve Flat(0 To NFlat)
+            Flat(NFlat).U = u
+            Flat(NFlat).K = k
+            Set Flat(NFlat).Cuerpo = CreaCuerpo(u, k, FACTOR_NORMAL)
+            If Not Flat(NFlat).Cuerpo Is Nothing Then NFlat = NFlat + 1
+        Next k
+    Next u
+
+    ' Los tarugos quedan DENTRO de las piezas (no se verian en sombreado):
+    ' durante la revision se pasa la vista a alambre y se restaura al cerrar.
+    On Error Resume Next
+    Dim vw As SldWorks.ModelView
+    Set vw = md.GetFirstModelView
+    If Not vw Is Nothing Then
+        modoOriginal = vw.DisplayMode
+        vw.DisplayMode = 1                  ' swViewDisplayMode_Wireframe
+        modoCambiado = True
+    End If
+End Sub
+
+' Cilindro temporal del tarugo k de la union u (radio = factor x radio del taladro)
+Private Function CreaCuerpo(ByVal u As Long, ByVal k As Long, ByVal factor As Double) As SldWorks.Body2
+    Dim cyl(0 To 7) As Double, base As TV3
+    base = V3(Uniones(u).Pos(k).X - Uniones(u).N1.X * Cfg.Prof1 * MM, _
+              Uniones(u).Pos(k).Y - Uniones(u).N1.Y * Cfg.Prof1 * MM, _
+              Uniones(u).Pos(k).Z - Uniones(u).N1.Z * Cfg.Prof1 * MM)
+    ' CylDimArray: centro de la base (3), eje (3), radio, altura. Debe ser Double().
+    cyl(0) = base.X: cyl(1) = base.Y: cyl(2) = base.Z
+    cyl(3) = Uniones(u).N1.X: cyl(4) = Uniones(u).N1.Y: cyl(5) = Uniones(u).N1.Z
+    cyl(6) = Cfg.Diametro * MM / 2 * factor
+    cyl(7) = (Cfg.Prof1 + Cfg.Prof2) * MM
+    Dim bd As SldWorks.Body2
+    Set bd = modeler.CreateBodyFromCyl(cyl)
+    If Not bd Is Nothing And Not invCB Is Nothing Then bd.ApplyTransform invCB
+    Set CreaCuerpo = bd
+End Function
+
+Private Function ColorDe(i As Long) As Long
+    If Flat(i).Sel Then
+        ColorDe = RGBl(230, 20, 20)            ' seleccionado (a quitar): rojo y mas grande
+    ElseIf Not Uniones(Flat(i).U).Activo(Flat(i).K) Then
+        ColorDe = RGBl(140, 140, 140)          ' ya eliminado: gris
+    ElseIf Uniones(Flat(i).U).Estado = "VALIDA" Then
+        ColorDe = RGBl(30, 190, 60)
+    Else
+        ColorDe = RGBl(255, 140, 0)
+    End If
+End Function
+
+'------------------------------------------------------------------------------
+' Dibuja todos los cuerpos temporales (se llama en cada repintado)
+'------------------------------------------------------------------------------
+' OJO: Display3 provoca un repintado, y RepaintPostNotify vuelve a llamar aqui.
+' Sin proteccion se produce un bucle infinito que congela SolidWorks (ocurrio en
+' las pruebas). Se evita con (1) un indicador de reentrada y (2) un minimo de
+' tiempo entre dibujados.
+Public Sub DibujaTodo()
+    If dibujando Then Exit Sub
+    If ultimoDibujo <> 0 Then
+        If Abs(Timer - ultimoDibujo) < 0.3 Then Exit Sub
+    End If
+    dibujando = True
+    On Error Resume Next
+    Llamadas = Llamadas + 1
+    Dim i As Long
+    For i = 0 To NFlat - 1
+        Err.Clear
+        If Flat(i).Sel <> Flat(i).Grande Then
+            Dim nb As SldWorks.Body2
+            Set nb = CreaCuerpo(Flat(i).U, Flat(i).K, IIf(Flat(i).Sel, FACTOR_SEL, FACTOR_NORMAL))
+            If Not nb Is Nothing Then Set Flat(i).Cuerpo = nb: Flat(i).Grande = Flat(i).Sel
+        End If
+        Flat(i).Cuerpo.Display3 compBase, ColorDe(i), swTempBodySelectable
+        If Err.Number <> 0 Then
+            errorDisplay = Err.Number & ": " & Err.Description
+            Err.Clear
+        End If
+    Next i
+    ultimoDibujo = Timer
+    dibujando = False
+End Sub
+
+Public Sub Redibuja()
+    ultimoDibujo = 0                       ' forzar el dibujado en el repintado que sigue
+    If Not mdlP Is Nothing Then mdlP.GraphicsRedraw2
+End Sub
+
+Public Function ErrorDeDisplay() As String
+    ErrorDeDisplay = errorDisplay
+End Function
+
+'------------------------------------------------------------------------------
+' Sincroniza la seleccion hecha con el raton en el modelo con la lista del formulario
+'------------------------------------------------------------------------------
+Public Sub SincronizaSeleccion()
+    If Formulario Is Nothing Then Exit Sub
+    On Error Resume Next
+    Dim sm As SldWorks.SelectionMgr
+    Set sm = mdlP.SelectionManager
+    Dim n As Long, i As Long, j As Long, o As Object
+    n = sm.GetSelectedObjectCount2(-1)
+    Dim hit() As Boolean
+    ReDim hit(0 To NFlat)
+    For i = 1 To n
+        If sm.GetSelectedObjectType3(i, -1) = swSelSOLIDBODIES Then
+            Set o = sm.GetSelectedObject6(i, -1)
+            For j = 0 To NFlat - 1
+                If swAppP.IsSame(o, Flat(j).Cuerpo) Then hit(j) = True
+            Next j
+        End If
+    Next i
+    Dim cualquiera As Boolean
+    For j = 0 To NFlat - 1
+        If hit(j) Then cualquiera = True
+    Next j
+    If cualquiera Then Formulario.SeleccionaDesdeModelo hit
+End Sub
+
+Public Sub Limpia()
+    On Error Resume Next
+    If Not Eventos Is Nothing Then Eventos.Desconecta
+    Set Eventos = Nothing
+    NFlat = 0
+    Erase Flat
+    Set Formulario = Nothing
+    If modoCambiado Then
+        Dim vw As SldWorks.ModelView
+        Set vw = mdlP.GetFirstModelView
+        If Not vw Is Nothing Then vw.DisplayMode = modoOriginal
+        modoCambiado = False
+    End If
+    Redibuja
+    Set mdlP = Nothing
+End Sub

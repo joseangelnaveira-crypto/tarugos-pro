@@ -1,0 +1,202 @@
+Option Explicit
+'==============================================================================
+' frmRevision - FASE 3: revision de los tarugos propuestos (formulario NO modal,
+' para poder seguir seleccionando tarugos en el modelo 3D).
+'==============================================================================
+
+Private actualizando As Boolean
+Public Aceptado As Boolean
+
+Private lblResumen As MSForms.Label
+Private lblInfo As MSForms.Label
+Private WithEvents lstTarugos As MSForms.ListBox
+Private WithEvents btnAceptarTodos As MSForms.CommandButton
+Private WithEvents btnEliminar As MSForms.CommandButton
+Private WithEvents btnRestaurar As MSForms.CommandButton
+Private WithEvents btnEliminarUnion As MSForms.CommandButton
+Private WithEvents btnRestaurarUnion As MSForms.CommandButton
+Private WithEvents btnCancelar As MSForms.CommandButton
+Private WithEvents btnMecanizar As MSForms.CommandButton
+
+Private Function NuevoBoton(ByVal nombre As String, ByVal texto As String, ByVal x As Single, ByVal y As Single, _
+                            ByVal w As Single, ByVal h As Single) As MSForms.CommandButton
+    Dim b As MSForms.CommandButton
+    Set b = Me.Controls.Add("Forms.CommandButton.1", nombre, True)
+    b.Caption = texto
+    b.Left = x: b.Top = y: b.Width = w: b.Height = h
+    Set NuevoBoton = b
+End Function
+
+' Los controles se crean por codigo (no hay que depender de la libreria al importar el .frm)
+Private Sub UserForm_Initialize()
+    actualizando = True          ' crear controles dispara eventos: ignorarlos
+    Me.Width = 654
+    Me.Height = 470
+    Set lblResumen = Me.Controls.Add("Forms.Label.1", "lblResumen", True)
+    lblResumen.Left = 12: lblResumen.Top = 6: lblResumen.Width = 620: lblResumen.Height = 54
+    Set lstTarugos = Me.Controls.Add("Forms.ListBox.1", "lstTarugos", True)
+    lstTarugos.Left = 12: lstTarugos.Top = 66: lstTarugos.Width = 620: lstTarugos.Height = 222
+    lstTarugos.ColumnCount = 5
+    lstTarugos.ColumnWidths = "110 pt;125 pt;125 pt;160 pt;80 pt"
+    lstTarugos.MultiSelect = 2
+    Set lblInfo = Me.Controls.Add("Forms.Label.1", "lblInfo", True)
+    lblInfo.Left = 12: lblInfo.Top = 294: lblInfo.Width = 620: lblInfo.Height = 30
+    lblInfo.ForeColor = 192
+    Set btnAceptarTodos = NuevoBoton("btnAceptarTodos", "ACEPTAR TODOS", 12, 330, 200, 28)
+    Set btnEliminar = NuevoBoton("btnEliminar", "ELIMINAR SELECCIONADO", 218, 330, 204, 28)
+    Set btnRestaurar = NuevoBoton("btnRestaurar", "RESTAURAR SELECCIONADO", 428, 330, 204, 28)
+    Set btnEliminarUnion = NuevoBoton("btnEliminarUnion", "ELIMINAR UNION COMPLETA", 12, 364, 310, 28)
+    Set btnRestaurarUnion = NuevoBoton("btnRestaurarUnion", "RESTAURAR UNION COMPLETA", 326, 364, 306, 28)
+    Set btnCancelar = NuevoBoton("btnCancelar", "CANCELAR", 12, 402, 200, 30)
+    Set btnMecanizar = NuevoBoton("btnMecanizar", "ACEPTAR Y MECANIZAR", 326, 402, 306, 30)
+    actualizando = False
+End Sub
+
+'------------------------------------------------------------------------------
+' Rellena la lista y el resumen a partir de Uniones()/Flat()
+'------------------------------------------------------------------------------
+Public Sub Refresca()
+    actualizando = True
+    Dim i As Long, u As Long, k As Long, p As TV3
+    lstTarugos.Clear
+    For i = 0 To NFlat - 1
+        u = Flat(i).U: k = Flat(i).K
+        p = Uniones(u).Pos(k)
+        lstTarugos.AddItem Uniones(u).Id & " / TARUGO_" & Format(k + 1, "000")
+        lstTarugos.List(i, 1) = Piezas(Uniones(u).P1).Nombre
+        lstTarugos.List(i, 2) = Piezas(Uniones(u).P2).Nombre
+        lstTarugos.List(i, 3) = Format(p.X * 1000, "0.0") & " ; " & Format(p.Y * 1000, "0.0") & " ; " & Format(p.Z * 1000, "0.0")
+        If Not Uniones(u).Activo(k) Then
+            lstTarugos.List(i, 4) = "ELIMINADO"
+        ElseIf Uniones(u).Estado = "VALIDA" Then
+            lstTarugos.List(i, 4) = "ACTIVO"
+        Else
+            lstTarugos.List(i, 4) = "FORZADO"
+        End If
+        lstTarugos.Selected(i) = Flat(i).Sel
+    Next i
+
+    Dim nPz As Long, nV As Long, nD As Long
+    For i = 0 To NPiezas - 1
+        If Piezas(i).Estado = "OK" Then nPz = nPz + 1
+    Next i
+    For u = 0 To NUniones - 1
+        If Uniones(u).Estado = "VALIDA" Then nV = nV + 1
+        If Uniones(u).Estado = "DUDOSA" Then nD = nD + 1
+    Next u
+    lblResumen.Caption = "Piezas analizadas: " & nPz & "     Uniones validas: " & nV & "     Uniones dudosas: " & nD & vbCrLf & _
+        "Tarugos: " & ContarTarugos() & "  (activos " & ContarActivos() & ", eliminados/pendientes " & (ContarTarugos() - ContarActivos()) & ")" & vbCrLf & _
+        "Diametro " & Cfg.Diametro & " mm   Profundidad pieza 1: " & Cfg.Prof1 & " mm   pieza 2: " & Cfg.Prof2 & " mm"
+    actualizando = False
+End Sub
+
+' Llamado desde mPreview cuando se hace clic sobre un tarugo en el modelo 3D
+Public Sub SeleccionaDesdeModelo(hit() As Boolean)
+    actualizando = True
+    Dim i As Long
+    For i = 0 To NFlat - 1
+        Flat(i).Sel = hit(i)
+        lstTarugos.Selected(i) = hit(i)
+    Next i
+    actualizando = False
+    MuestraInfo
+    mPreview.Redibuja
+End Sub
+
+Private Sub MuestraInfo()
+    If lblInfo Is Nothing Then Exit Sub
+    Dim i As Long
+    lblInfo.Caption = ""
+    For i = 0 To NFlat - 1
+        If Flat(i).Sel Then
+            If Uniones(Flat(i).U).Motivo <> "" Then
+                lblInfo.Caption = Uniones(Flat(i).U).Id & " (" & Uniones(Flat(i).U).Estado & "): " & Uniones(Flat(i).U).Motivo
+            Else
+                lblInfo.Caption = Uniones(Flat(i).U).Id & ": " & Uniones(Flat(i).U).Tipo & ", longitud " & Format(Uniones(Flat(i).U).L * 1000, "0.0") & " mm"
+            End If
+            Exit For
+        End If
+    Next i
+    lblInfo.Caption = lblInfo.Caption & "  [rep=" & mPreview.Llamadas & " err=" & mPreview.ErrorDeDisplay & "]"
+End Sub
+
+Private Sub lstTarugos_Change()
+    If actualizando Or lstTarugos Is Nothing Then Exit Sub
+    Dim i As Long
+    For i = 0 To NFlat - 1
+        Flat(i).Sel = lstTarugos.Selected(i)
+    Next i
+    MuestraInfo
+    mPreview.Redibuja
+End Sub
+
+Private Sub btnAceptarTodos_Click()
+    AceptarTodos
+    Refresca
+    mPreview.Redibuja
+End Sub
+
+Private Sub btnEliminar_Click()
+    Dim i As Long, n As Long
+    For i = 0 To NFlat - 1
+        If lstTarugos.Selected(i) Then
+            Uniones(Flat(i).U).Activo(Flat(i).K) = False
+            n = n + 1
+        End If
+    Next i
+    Refresca
+    lblInfo.Caption = n & " tarugo(s) eliminado(s)"
+    mPreview.Redibuja
+End Sub
+
+Private Sub btnRestaurar_Click()
+    Dim i As Long, n As Long
+    For i = 0 To NFlat - 1
+        If lstTarugos.Selected(i) Then
+            Uniones(Flat(i).U).Activo(Flat(i).K) = True
+            n = n + 1
+        End If
+    Next i
+    Refresca
+    lblInfo.Caption = n & " tarugo(s) restaurado(s)"
+    mPreview.Redibuja
+End Sub
+
+Private Sub btnEliminarUnion_Click()
+    Dim i As Long, hecho() As Boolean
+    ReDim hecho(0 To NUniones)
+    For i = 0 To NFlat - 1
+        If lstTarugos.Selected(i) Then
+            If Not hecho(Flat(i).U) Then EliminaUnion Flat(i).U: hecho(Flat(i).U) = True
+        End If
+    Next i
+    Refresca
+    mPreview.Redibuja
+End Sub
+
+Private Sub btnRestaurarUnion_Click()
+    Dim i As Long, hecho() As Boolean
+    ReDim hecho(0 To NUniones)
+    For i = 0 To NFlat - 1
+        If lstTarugos.Selected(i) Then
+            If Not hecho(Flat(i).U) Then RestauraUnion Flat(i).U: hecho(Flat(i).U) = True
+        End If
+    Next i
+    Refresca
+    mPreview.Redibuja
+End Sub
+
+Private Sub btnCancelar_Click()
+    Aceptado = False
+    Unload Me
+End Sub
+
+Private Sub btnMecanizar_Click()
+    Aceptado = True
+    Unload Me                  ' cierra la revision y restaura la vista
+    mTaladros.Mecaniza         ' pide confirmacion y crea los taladros reales
+End Sub
+
+Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
+    mPreview.Limpia
+End Sub
