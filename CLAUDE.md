@@ -34,7 +34,7 @@ deja revisarlos y crea taladros reales (cortes extruidos) en los archivos de cad
 Hecho: fases 1-8 (geometria, uniones, reparto, revision 3D, taladros reales, copias independientes, duplicados, deshacer, rendimiento, interfaz, CSV).
 Probado: tableros rectangulares a 90 grados, hasta 90 componentes (0,5 s), SolidWorks 2024.
 Pendiente / sin confirmar:
-- Mecanizado SIN ventana por pieza (`DocumentVisible False`, sin `ActivateDoc3`): cargado pero NO probado.
+- Mecanizado SIN ventana por pieza (`DocumentVisible False`, sin `ActivateDoc3`): PROBADO Y FALLA (0 de 118: SelectByID2 no da la cara e InsertSketch no abre croquis). Se volvio a abrir + `ActivateDoc3` en `MecanizaDoc`; pendiente de confirmar que ahora si taladra.
 - Tarugo seleccionado en rojo y mas grande: cargado, no probado visualmente. El clic directo sobre cilindros en 3D no es fiable.
 - Piezas virtuales (simetrias) se omiten; piezas inclinadas, canto con canto, contornos curvos: sin probar.
 - Analisis "completo" del documento original: no implementado. Compatibilidad SW 2025/2026 y PDM: sin probar / no integrado

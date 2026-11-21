@@ -293,12 +293,16 @@ End Function
 Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, miembros() As Long, ByVal nm As Long) As Long
     Dim e As Long, w As Long
     Dim pmd As SldWorks.ModelDoc2
-    ' Se abre SIN ventana (DocumentVisible = False) y sin activarla: asi no salta una
-    ' ventana por cada pieza.
-    app.DocumentVisible False, swDocPART
+    ' La pieza se abre Y SE ACTIVA (con ventana). El modo sin ventana (DocumentVisible False,
+    ' sin ActivateDoc3) fallaba: SelectByID2 no devolvia la cara y InsertSketch no abria el
+    ' croquis (0 de 118 taladros), porque SolidWorks necesita el documento activo para
+    ' seleccionar y croquizar.
     Set pmd = app.OpenDoc6(path, swDocPART, swOpenDocOptions_Silent, "", e, w)
-    app.DocumentVisible True, swDocPART
     If pmd Is Nothing Then Anota "ERROR no se pudo abrir " & path: Exit Function
+    Dim eAct As Long
+    app.ActivateDoc3 pmd.GetTitle, False, 1, eAct
+    Set pmd = app.ActiveDoc
+    If pmd Is Nothing Then Anota "ERROR no se pudo activar " & path: Exit Function
     Dim act As SldWorks.ModelDoc2
     Set act = pmd
     If mGuardado.EsSoloLectura(act) Then Anota "OMITIDA " & path & ": solo lectura": Exit Function
