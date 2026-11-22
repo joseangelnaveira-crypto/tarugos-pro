@@ -206,11 +206,10 @@ Public Sub SincronizaSeleccion()
             Next j
         End If
     Next i
-    Dim cualquiera As Boolean
-    For j = 0 To NFlat - 1
-        If hit(j) Then cualquiera = True
-    Next j
-    If cualquiera Then Formulario.SeleccionaDesdeModelo hit
+    ' Se sincroniza SIEMPRE, tambien cuando no hay ningun tarugo seleccionado en el modelo:
+    ' si no, al desmarcar un tarugo en el 3D (clic en vacio o Ctrl+clic) quedaba marcado
+    ' en la lista y dibujado en rojo con su aro.
+    Formulario.SeleccionaDesdeModelo hit
 End Sub
 
 Public Sub Limpia()
