@@ -39,7 +39,10 @@ Si se cambia el codigo de `src/`, hay que volver a guardar el .swp desde el edit
 | Incremento de tarugos | 1 | ...se anaden estos tarugos |
 | Tolerancia geometrica | 0,1 | Para decidir si dos caras estan en contacto |
 
-N = N inicial + IncN x ENTERO((L - Lref) / IncLong). Los ajustes se guardan en el registro de Windows
+N = N inicial + IncN x ENTERO((L - Lref) / IncLong). Si en una union corta no caben N tarugos (con la distancia a los
+extremos y la separacion minima), se prueba con uno menos, y asi hasta 1 tarugo centrado (anotado en el motivo de la union).
+Si un tarugo cae en un hueco de alguna de las piezas, se desplaza (manteniendo la distancia a los extremos) o, si no hay
+sitio, se descarta en las dos piezas y se marca en rojo oscuro ("sin material"). Los ajustes se guardan en el registro de Windows
 (`HKCU\Software\VB and VBA Program Settings\TarugosPro`).
 
 ## Resultados

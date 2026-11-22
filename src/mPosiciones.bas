@@ -11,11 +11,36 @@ Option Explicit
 '   N          3    3    3    4    5    6    7     (valores por defecto)
 '==============================================================================
 
+' Aviso del ultimo CalculaPosiciones cuando se han puesto MENOS tarugos de los del reparto
+' estandar por ser la union corta ("" si no ha hecho falta). mUniones lo anade al motivo.
+Public NotaReparto As String
+
 Public Function NumTarugos(ByVal Lmm As Double) As Long
     If Lmm <= Cfg.LongRef Then
         NumTarugos = Cfg.NInicial
     Else
         NumTarugos = Cfg.NInicial + Cfg.IncN * Int((Lmm - Cfg.LongRef) / Cfg.IncLong)
+    End If
+End Function
+
+' "" si caben n tarugos en la union de Lmm mm; si no, el motivo. sep = separacion resultante (n > 1).
+' n = 1 va centrado y solo exige una longitud minima (no usa la distancia a los extremos).
+Private Function CabenN(ByVal Lmm As Double, ByVal d As Double, ByVal n As Long, ByRef sep As Double) As String
+    Dim util As Double
+    sep = 0
+    If n = 1 Then
+        If Lmm < 2 * Cfg.Diametro Then CabenN = "Union demasiado corta (" & Format(Lmm, "0.0") & " mm)"
+    Else
+        util = Lmm - 2 * d
+        If util <= 0 Then
+            CabenN = "Longitud util insuficiente: " & Format(Lmm, "0.0") & " mm con " & d & " mm a cada extremo"
+            Exit Function
+        End If
+        sep = util / (n - 1)
+        If sep < Cfg.SepMinFactor * Cfg.Diametro Then
+            CabenN = "Separacion entre tarugos (" & Format(sep, "0.0") & " mm) menor que la minima (" & _
+                     Format(Cfg.SepMinFactor * Cfg.Diametro, "0.0") & " mm)"
+        End If
     End If
 End Function
 
@@ -27,28 +52,26 @@ Public Function CalculaPosiciones(un As TUnion) As String
     Erase un.Activo
     Erase un.SinMat
 
-    Dim Lmm As Double, d As Double, n As Long
+    NotaReparto = ""
+    Dim Lmm As Double, d As Double, n As Long, n0 As Long
     Lmm = un.L / MM
     d = Cfg.DistExtremos
-    n = NumTarugos(Lmm)
-    If n < 1 Then CalculaPosiciones = "Numero de tarugos invalido": Exit Function
+    n0 = NumTarugos(Lmm)
+    If n0 < 1 Then CalculaPosiciones = "Numero de tarugos invalido": Exit Function
 
-    Dim util As Double, sep As Double
-    If n = 1 Then
-        If Lmm < 2 * Cfg.Diametro Then CalculaPosiciones = "Union demasiado corta (" & Format(Lmm, "0.0") & " mm)": Exit Function
-        sep = 0
-    Else
-        util = Lmm - 2 * d
-        If util <= 0 Then
-            CalculaPosiciones = "Longitud util insuficiente: " & Format(Lmm, "0.0") & " mm con " & d & " mm a cada extremo"
-            Exit Function
-        End If
-        sep = util / (n - 1)
-        If sep < Cfg.SepMinFactor * Cfg.Diametro Then
-            CalculaPosiciones = "Separacion entre tarugos (" & Format(sep, "0.0") & " mm) menor que la minima (" & _
-                                Format(Cfg.SepMinFactor * Cfg.Diametro, "0.0") & " mm)"
-            Exit Function
-        End If
+    ' Si no caben los n0 tarugos del reparto estandar (union corta), se prueba con uno menos,
+    ' y asi hasta 1 tarugo centrado. Cuando n0 SI cabe, el resultado es exactamente el de siempre.
+    Dim sep As Double, motivo As String
+    n = n0
+    Do
+        motivo = CabenN(Lmm, d, n, sep)
+        If motivo = "" Then Exit Do
+        If n <= 1 Then CalculaPosiciones = motivo: Exit Function
+        n = n - 1
+    Loop
+    If n < n0 Then
+        NotaReparto = "Union corta (" & Format(Lmm, "0") & " mm): " & n & " tarugo" & IIf(n = 1, "", "s") & _
+                      " en lugar de " & n0 & IIf(n = 1, " (centrado)", "")
     End If
 
     ReDim un.Pos(0 To n - 1)

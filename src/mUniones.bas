@@ -286,6 +286,7 @@ Private Sub AnalizaContacto(a As Long, i As Long, b As Long, j As Long, ByVal ga
         ' reparto de tarugos (se calcula tambien para uniones dudosas, para revisarlas)
         Dim errPos As String
         errPos = CalculaPosiciones(un)
+        If errPos = "" And mPosiciones.NotaReparto <> "" Then un.Motivo = AnadeMotivo(un.Motivo, mPosiciones.NotaReparto)
         If errPos <> "" Then
             un.Estado = "DUDOSA"
             un.Motivo = AnadeMotivo(un.Motivo, errPos)
