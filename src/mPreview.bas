@@ -46,6 +46,11 @@ Private dibujando As Boolean           ' proteccion contra reentrada en DibujaTo
 Private ultimoDibujo As Double     ' componente de referencia para Display3 (si hace falta)
 Private errorDisplay As String
 Public Llamadas As Long                     ' numero de repintados atendidos (diagnostico)
+' Resalte de las dos piezas del tarugo seleccionado (se seleccionan como componentes: SolidWorks
+' las pinta con su color de seleccion, tambien en alambre). Poner False para desactivarlo.
+Private Const RESALTA_PIEZAS As Boolean = True
+Private resNombres As String                ' piezas resaltadas ahora, entre barras: |Balda-1|Costado_IZQ-1|
+Private seleccionPropia As Boolean          ' la macro esta cambiando la seleccion (SincronizaSeleccion lo ignora)
 
 Private Function RGBl(ByVal r As Long, ByVal g As Long, ByVal b As Long) As Long
     RGBl = r + g * 256 + b * 65536
@@ -59,6 +64,7 @@ Public Sub ConstruyePreview(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
     Set mdlP = md
     NFlat = 0
     Erase Flat
+    resNombres = ""
 
     Set modeler = app.GetModeler
 
@@ -187,7 +193,60 @@ End Sub
 
 Public Sub Redibuja()
     ultimoDibujo = 0                       ' forzar el dibujado en el repintado que sigue
+    ActualizaResalte
     If Not mdlP Is Nothing Then mdlP.GraphicsRedraw2
+End Sub
+
+' Lista de nombres entre barras ("|a|b|"): anade n si no estaba
+Private Function AnadeNombre(ByVal lista As String, ByVal n As String) As String
+    If lista = "" Then lista = "|"
+    If InStr(lista, "|" & n & "|") = 0 Then lista = lista & n & "|"
+    AnadeNombre = lista
+End Function
+
+'------------------------------------------------------------------------------
+' Resalta las dos piezas (componentes) de cada tarugo seleccionado, para localizarlo
+' mejor en alambre. Se ANADEN a la seleccion (no se borra nada: los tarugos que el
+' usuario haya seleccionado con el raton siguen seleccionados) y al desmarcar se
+' quitan SOLO las que puso la macro (resNombres). No modifica el ensamblaje.
+'------------------------------------------------------------------------------
+Private Sub ActualizaResalte()
+    If Not RESALTA_PIEZAS Then Exit Sub
+    If mdlP Is Nothing Then Exit Sub
+    On Error Resume Next
+    Dim i As Long, u As Long, deseadas As String
+    For i = 0 To NFlat - 1
+        If Flat(i).Sel Then
+            u = Flat(i).U
+            deseadas = AnadeNombre(deseadas, Piezas(Uniones(u).P1).Nombre)
+            deseadas = AnadeNombre(deseadas, Piezas(Uniones(u).P2).Nombre)
+        End If
+    Next i
+    If deseadas = "" And resNombres = "" Then Exit Sub
+
+    ' componentes seleccionados ahora mismo (por la macro o por el usuario)
+    Dim sm As SldWorks.SelectionMgr, c As SldWorks.Component2, sel As String, n As Long
+    Set sm = mdlP.SelectionManager
+    n = sm.GetSelectedObjectCount2(-1)
+    For i = 1 To n
+        If sm.GetSelectedObjectType3(i, -1) = swSelCOMPONENTS Then
+            Set c = sm.GetSelectedObject6(i, -1)
+            If Not c Is Nothing Then sel = AnadeNombre(sel, c.Name2)
+        End If
+    Next i
+
+    seleccionPropia = True
+    Dim p As Long, nom As String
+    For p = 0 To NPiezas - 1
+        nom = "|" & Piezas(p).Nombre & "|"
+        If InStr(deseadas, nom) > 0 Then
+            If InStr(sel, nom) = 0 Then Piezas(p).Comp.Select2 True, 0
+        ElseIf InStr(resNombres, nom) > 0 Then
+            If InStr(sel, nom) > 0 Then Piezas(p).Comp.DeSelect
+        End If
+    Next p
+    seleccionPropia = False
+    resNombres = deseadas
 End Sub
 
 Public Function ErrorDeDisplay() As String
@@ -199,6 +258,7 @@ End Function
 '------------------------------------------------------------------------------
 Public Sub SincronizaSeleccion()
     If Formulario Is Nothing Then Exit Sub
+    If seleccionPropia Then Exit Sub        ' la seleccion la esta cambiando la macro (ActualizaResalte)
     On Error Resume Next
     Dim sm As SldWorks.SelectionMgr
     Set sm = mdlP.SelectionManager
