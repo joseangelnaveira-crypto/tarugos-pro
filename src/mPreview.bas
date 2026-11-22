@@ -46,12 +46,12 @@ Private dibujando As Boolean           ' proteccion contra reentrada en DibujaTo
 Private ultimoDibujo As Double     ' componente de referencia para Display3 (si hace falta)
 Private errorDisplay As String
 Public Llamadas As Long                     ' numero de repintados atendidos (diagnostico)
-' Resalte de las dos piezas del tarugo seleccionado (se seleccionan como componentes: SolidWorks
-' las pinta con su color de seleccion, tambien en alambre). Poner False para desactivarlo.
+' Resalte de las dos piezas del tarugo seleccionado: se dibujan TAMBIEN como cuerpos temporales
+' (una copia de su cuerpo) en un color vivo. Se probo seleccionarlas como componentes, pero los
+' repintados que provoca esa seleccion borraban los cuerpos temporales de los tarugos hasta el
+' siguiente repintado. Poner False para desactivar el resalte.
 Private Const RESALTA_PIEZAS As Boolean = True
-Private resNombres As String                ' piezas resaltadas ahora, entre barras: |Balda-1|Costado_IZQ-1|
-Private seleccionPropia As Boolean          ' la macro esta cambiando la seleccion (SincronizaSeleccion lo ignora)
-Private permitidos As Long                  ' dibujados que DibujaTodo concede sin esperar los 0,3 s (los pone Redibuja)
+Private PzCuerpo() As SldWorks.Body2        ' copia dibujable de cada pieza resaltada (Nothing = no resaltada)
 
 Private Function RGBl(ByVal r As Long, ByVal g As Long, ByVal b As Long) As Long
     RGBl = r + g * 256 + b * 65536
@@ -65,7 +65,8 @@ Public Sub ConstruyePreview(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
     Set mdlP = md
     NFlat = 0
     Erase Flat
-    resNombres = ""
+    Erase PzCuerpo
+    If NPiezas > 0 Then ReDim PzCuerpo(0 To NPiezas - 1)
 
     Set modeler = app.GetModeler
 
@@ -136,6 +137,18 @@ Private Function CreaAro(ByVal u As Long, ByVal k As Long) As SldWorks.Body2
     Set CreaAro = bd
 End Function
 
+' Copia dibujable del cuerpo de la pieza p (mismo tratamiento que los tarugos: en coordenadas de
+' ensamblaje y compensada con la inversa del componente de referencia de Display3)
+Private Function CreaCuerpoPieza(ByVal p As Long) As SldWorks.Body2
+    Dim bd As SldWorks.Body2, c As SldWorks.Body2
+    If Piezas(p).Estado <> "OK" Or Piezas(p).NCaras < 1 Then Exit Function
+    Set bd = Piezas(p).Caras(0).Ref.GetBody
+    If bd Is Nothing Then Exit Function
+    Set c = bd.Copy
+    If Not c Is Nothing And Not invCB Is Nothing Then c.ApplyTransform invCB
+    Set CreaCuerpoPieza = c
+End Function
+
 Private Function ColorDe(i As Long) As Long
     If Flat(i).Sel Then
         ColorDe = RGBl(230, 20, 20)            ' seleccionado (a quitar): rojo y mas grande
@@ -157,16 +170,9 @@ End Function
 ' Sin proteccion se produce un bucle infinito que congela SolidWorks (ocurrio en
 ' las pruebas). Se evita con (1) un indicador de reentrada y (2) un minimo de
 ' tiempo entre dibujados.
-' Excepcion: tras cambiar la seleccion (Redibuja) llegan repintados PROPIOS de SolidWorks
-' (resalte de las piezas) despues del dibujado forzado; borran los cuerpos temporales y, con
-' el minimo de 0,3 s, no se redibujaban (los tarugos desaparecian hasta el siguiente
-' repintado). Por eso Redibuja concede unos pocos dibujados sin esperar (permitidos); son
-' pocos y acotados, asi que no puede volver el bucle infinito.
 Public Sub DibujaTodo()
     If dibujando Then Exit Sub
-    If permitidos > 0 Then
-        permitidos = permitidos - 1
-    ElseIf ultimoDibujo <> 0 Then
+    If ultimoDibujo <> 0 Then
         If Abs(Timer - ultimoDibujo) < 0.3 Then Exit Sub
     End If
     dibujando = True
@@ -195,86 +201,35 @@ Public Sub DibujaTodo()
             Err.Clear
         End If
     Next i
+
+    ' Resalte de las dos piezas de cada tarugo seleccionado (color vivo). Al dejar de estar
+    ' resaltada hay que SOLTAR la copia: el cuerpo temporal sigue en pantalla mientras exista.
+    If RESALTA_PIEZAS And NPiezas > 0 Then
+        Dim marcada() As Boolean, p As Long
+        ReDim marcada(0 To NPiezas - 1)
+        For i = 0 To NFlat - 1
+            If Flat(i).Sel Then
+                marcada(Uniones(Flat(i).U).P1) = True
+                marcada(Uniones(Flat(i).U).P2) = True
+            End If
+        Next i
+        For p = 0 To NPiezas - 1
+            If marcada(p) Then
+                If PzCuerpo(p) Is Nothing Then Set PzCuerpo(p) = CreaCuerpoPieza(p)
+                If Not PzCuerpo(p) Is Nothing Then PzCuerpo(p).Display3 compBase, RGBl(210, 0, 210), swTempBodySelectOptionNone
+            ElseIf Not PzCuerpo(p) Is Nothing Then
+                Set PzCuerpo(p) = Nothing
+            End If
+        Next p
+    End If
     ultimoDibujo = Timer
     dibujando = False
 End Sub
 
 Public Sub Redibuja()
-    ' ActualizaResalte cambia la seleccion y eso provoca repintados propios: se hace ANTES de
-    ' poner ultimoDibujo = 0. Si se hacia despues, uno de esos repintados consumia el permiso de
-    ' dibujar (minimo 0,3 s entre dibujados) y el repintado final no redibujaba los tarugos:
-    ' quedaba el aro del tarugo anterior y no aparecia el nuevo hasta hacer clic en el dibujo.
-    Dim cambio As Boolean
-    cambio = ActualizaResalte()
-    ' Si se ha cambiado la seleccion, SolidWorks tarda en terminar sus repintados (resalte de las
-    ' piezas) y cualquiera de ellos borra los cuerpos temporales. Se le deja medio segundo para
-    ' que termine (DoEvents atiende los mensajes pendientes) y SOLO ENTONCES se fuerza el
-    ' dibujado final, que asi es el ultimo.
-    If cambio Then EsperaSolidWorks 0.5
     ultimoDibujo = 0                       ' forzar el dibujado en el repintado que sigue
-    permitidos = 3                         ' y en los 2 que pueden llegar despues (ver DibujaTodo)
     If Not mdlP Is Nothing Then mdlP.GraphicsRedraw2
 End Sub
-
-Private Sub EsperaSolidWorks(ByVal seg As Double)
-    Dim t As Double
-    t = Timer
-    Do While Abs(Timer - t) < seg
-        DoEvents
-    Loop
-End Sub
-
-' Lista de nombres entre barras ("|a|b|"): anade n si no estaba
-Private Function AnadeNombre(ByVal lista As String, ByVal n As String) As String
-    If lista = "" Then lista = "|"
-    If InStr(lista, "|" & n & "|") = 0 Then lista = lista & n & "|"
-    AnadeNombre = lista
-End Function
-
-'------------------------------------------------------------------------------
-' Resalta las dos piezas (componentes) de cada tarugo seleccionado, para localizarlo
-' mejor en alambre. Se ANADEN a la seleccion (no se borra nada: los tarugos que el
-' usuario haya seleccionado con el raton siguen seleccionados) y al desmarcar se
-' quitan SOLO las que puso la macro (resNombres). No modifica el ensamblaje.
-'------------------------------------------------------------------------------
-Private Function ActualizaResalte() As Boolean
-    If Not RESALTA_PIEZAS Then Exit Function
-    If mdlP Is Nothing Then Exit Function
-    On Error Resume Next
-    Dim i As Long, u As Long, deseadas As String
-    For i = 0 To NFlat - 1
-        If Flat(i).Sel Then
-            u = Flat(i).U
-            deseadas = AnadeNombre(deseadas, Piezas(Uniones(u).P1).Nombre)
-            deseadas = AnadeNombre(deseadas, Piezas(Uniones(u).P2).Nombre)
-        End If
-    Next i
-    If deseadas = "" And resNombres = "" Then Exit Function
-
-    ' componentes seleccionados ahora mismo (por la macro o por el usuario)
-    Dim sm As SldWorks.SelectionMgr, c As SldWorks.Component2, sel As String, n As Long
-    Set sm = mdlP.SelectionManager
-    n = sm.GetSelectedObjectCount2(-1)
-    For i = 1 To n
-        If sm.GetSelectedObjectType3(i, -1) = swSelCOMPONENTS Then
-            Set c = sm.GetSelectedObject6(i, -1)
-            If Not c Is Nothing Then sel = AnadeNombre(sel, c.Name2)
-        End If
-    Next i
-
-    seleccionPropia = True
-    Dim p As Long, nom As String
-    For p = 0 To NPiezas - 1
-        nom = "|" & Piezas(p).Nombre & "|"
-        If InStr(deseadas, nom) > 0 Then
-            If InStr(sel, nom) = 0 Then Piezas(p).Comp.Select2 True, 0: ActualizaResalte = True
-        ElseIf InStr(resNombres, nom) > 0 Then
-            If InStr(sel, nom) > 0 Then Piezas(p).Comp.DeSelect: ActualizaResalte = True
-        End If
-    Next p
-    seleccionPropia = False
-    resNombres = deseadas
-End Function
 
 Public Function ErrorDeDisplay() As String
     ErrorDeDisplay = errorDisplay
@@ -285,7 +240,6 @@ End Function
 '------------------------------------------------------------------------------
 Public Sub SincronizaSeleccion()
     If Formulario Is Nothing Then Exit Sub
-    If seleccionPropia Then Exit Sub        ' la seleccion la esta cambiando la macro (ActualizaResalte)
     On Error Resume Next
     Dim sm As SldWorks.SelectionMgr
     Set sm = mdlP.SelectionManager
@@ -313,6 +267,7 @@ Public Sub Limpia()
     Set Eventos = Nothing
     NFlat = 0
     Erase Flat
+    Erase PzCuerpo                          ' soltar las copias resaltadas: se quitan de pantalla
     Set Formulario = Nothing
     If modoCambiado Then
         Dim vw As SldWorks.ModelView
