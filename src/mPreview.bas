@@ -192,8 +192,12 @@ Public Sub DibujaTodo()
 End Sub
 
 Public Sub Redibuja()
-    ultimoDibujo = 0                       ' forzar el dibujado en el repintado que sigue
+    ' ActualizaResalte cambia la seleccion y eso provoca repintados propios: se hace ANTES de
+    ' poner ultimoDibujo = 0. Si se hacia despues, uno de esos repintados consumia el permiso de
+    ' dibujar (minimo 0,3 s entre dibujados) y el repintado final no redibujaba los tarugos:
+    ' quedaba el aro del tarugo anterior y no aparecia el nuevo hasta hacer clic en el dibujo.
     ActualizaResalte
+    ultimoDibujo = 0                       ' forzar el dibujado en el repintado que sigue
     If Not mdlP Is Nothing Then mdlP.GraphicsRedraw2
 End Sub
 
