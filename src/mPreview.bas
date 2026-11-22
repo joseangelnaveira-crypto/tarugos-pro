@@ -9,8 +9,8 @@ Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Eje
 ' SolidWorks borra los cuerpos temporales en cada repintado, asi que la clase
 ' cEventos llama a DibujaTodo desde RepaintPostNotify.
 '
-' Colores:  verde = activo | naranja = union dudosa forzada | rojo = eliminado
-'           amarillo = seleccionado
+' Colores:  verde = activo | naranja = union dudosa forzada | gris = eliminado
+'           rojo (mas grande y con aro) = seleccionado
 '==============================================================================
 
 Public Type TFlat
@@ -19,6 +19,7 @@ Public Type TFlat
     Cuerpo As SldWorks.Body2
     Sel As Boolean
     Grande As Boolean       ' el cuerpo temporal actual esta dibujado en tamano 'seleccionado'
+    Aro As SldWorks.Body2   ' disco fino y ancho alrededor del tarugo seleccionado (se crea al seleccionarlo)
 End Type
 
 Public Flat() As TFlat
@@ -34,6 +35,10 @@ Private modeler As SldWorks.Modeler
 Private invCB As SldWorks.MathTransform     ' inversa de la transformacion del componente de referencia
 Const FACTOR_NORMAL As Double = 1.6     ' los cilindros se dibujan mas gruesos que el taladro real
 Const FACTOR_SEL As Double = 3.5        ' el tarugo seleccionado se agranda para localizarlo
+' En alambre el color casi no se aprecia, asi que el seleccionado lleva ademas un ARO: un disco
+' fino y ancho (en alambre se ve como dos circulos grandes) centrado en el tarugo.
+Const RADIO_ARO As Double = 0.06        ' m (60 mm de radio)
+Const ESPESOR_ARO As Double = 0.001     ' m
 Private modoOriginal As Long
 Private modoCambiado As Boolean
 Private dibujando As Boolean           ' proteccion contra reentrada en DibujaTodo
@@ -108,6 +113,21 @@ Private Function CreaCuerpo(ByVal u As Long, ByVal k As Long, ByVal factor As Do
     Set CreaCuerpo = bd
 End Function
 
+' Aro del tarugo k de la union u: disco centrado en el punto medio del tarugo, con su mismo eje
+Private Function CreaAro(ByVal u As Long, ByVal k As Long) As SldWorks.Body2
+    Dim cyl(0 To 7) As Double
+    cyl(0) = Uniones(u).Pos(k).X - Uniones(u).N1.X * ESPESOR_ARO / 2
+    cyl(1) = Uniones(u).Pos(k).Y - Uniones(u).N1.Y * ESPESOR_ARO / 2
+    cyl(2) = Uniones(u).Pos(k).Z - Uniones(u).N1.Z * ESPESOR_ARO / 2
+    cyl(3) = Uniones(u).N1.X: cyl(4) = Uniones(u).N1.Y: cyl(5) = Uniones(u).N1.Z
+    cyl(6) = RADIO_ARO
+    cyl(7) = ESPESOR_ARO
+    Dim bd As SldWorks.Body2
+    Set bd = modeler.CreateBodyFromCyl(cyl)
+    If Not bd Is Nothing And Not invCB Is Nothing Then bd.ApplyTransform invCB
+    Set CreaAro = bd
+End Function
+
 Private Function ColorDe(i As Long) As Long
     If Flat(i).Sel Then
         ColorDe = RGBl(230, 20, 20)            ' seleccionado (a quitar): rojo y mas grande
@@ -144,6 +164,10 @@ Public Sub DibujaTodo()
             If Not nb Is Nothing Then Set Flat(i).Cuerpo = nb: Flat(i).Grande = Flat(i).Sel
         End If
         Flat(i).Cuerpo.Display3 compBase, ColorDe(i), swTempBodySelectable
+        If Flat(i).Sel Then
+            If Flat(i).Aro Is Nothing Then Set Flat(i).Aro = CreaAro(Flat(i).U, Flat(i).K)
+            If Not Flat(i).Aro Is Nothing Then Flat(i).Aro.Display3 compBase, ColorDe(i), swTempBodySelectable
+        End If
         If Err.Number <> 0 Then
             errorDisplay = Err.Number & ": " & Err.Description
             Err.Clear
