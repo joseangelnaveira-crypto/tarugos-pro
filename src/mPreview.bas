@@ -129,7 +129,7 @@ Private Function CreaCuerpo(ByVal u As Long, ByVal k As Long, ByVal factor As Do
     cyl(7) = (Cfg.Prof1 + Cfg.Prof2) * MM
     Dim bd As SldWorks.Body2
     Set bd = modeler.CreateBodyFromCyl(cyl)
-    If Not bd Is Nothing And Not invCB Is Nothing Then bd.ApplyTransform invCB
+    ' en coordenadas de ensamblaje, sin compensar (se dibuja con Display3 Nothing: ver DibujaTodo)
     Set CreaCuerpo = bd
 End Function
 
@@ -199,7 +199,7 @@ Public Sub DibujaTodo()
             Set nb = CreaCuerpo(Flat(i).U, Flat(i).K, IIf(q, FACTOR_SEL, FACTOR_NORMAL))
             If Not nb Is Nothing Then Set Flat(i).Cuerpo = nb: Flat(i).Grande = q
         End If
-        Flat(i).Cuerpo.Display3 compBase, ColorDe(i), swTempBodySelectable
+        Flat(i).Cuerpo.Display3 Nothing, ColorDe(i), swTempBodySelectable
         If q Then
             If Flat(i).Aro Is Nothing Then Set Flat(i).Aro = CreaAro(Flat(i).U, Flat(i).K)
             If Not Flat(i).Aro Is Nothing Then Flat(i).Aro.Display3 Nothing, ColorDe(i), swTempBodySelectable
