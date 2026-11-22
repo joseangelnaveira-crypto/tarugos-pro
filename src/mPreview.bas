@@ -9,9 +9,11 @@ Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Eje
 ' SolidWorks borra los cuerpos temporales en cada repintado, asi que la clase
 ' cEventos llama a DibujaTodo desde RepaintPostNotify.
 '
-' Colores:  verde = activo | naranja = union dudosa forzada | gris = eliminado
-'           rojo (mas grande y con aro) = seleccionado
-'           rojo oscuro = sin material (cae en un hueco; descartado, ver mHuecos)
+' En alambre el color de los cuerpos temporales no se aprecia (heredan el del componente de
+' referencia: ver ConstruyePreview), asi que el estado se ve asi:
+'   - tarugo ACTIVO: cilindro negro
+'   - tarugo MARCADO: cilindro mas grande + sus dos piezas resaltadas (seleccion de SolidWorks)
+'   - tarugo ELIMINADO (o sin material): NO se dibuja (se vuelve a ver al marcarlo)
 '==============================================================================
 
 Public Type TFlat
@@ -20,7 +22,6 @@ Public Type TFlat
     Cuerpo As SldWorks.Body2
     Sel As Boolean
     Grande As Boolean       ' el cuerpo temporal actual esta dibujado en tamano 'seleccionado'
-    Aro As SldWorks.Body2   ' disco fino y ancho alrededor del tarugo seleccionado (se crea al seleccionarlo)
 End Type
 
 Public Flat() As TFlat
@@ -36,21 +37,12 @@ Private modeler As SldWorks.Modeler
 Private invCB As SldWorks.MathTransform     ' inversa de la transformacion del componente de referencia
 Const FACTOR_NORMAL As Double = 1.6     ' los cilindros se dibujan mas gruesos que el taladro real
 Const FACTOR_SEL As Double = 3.5        ' el tarugo seleccionado se agranda para localizarlo
-' En alambre el color casi no se aprecia, asi que el seleccionado lleva ademas un ARO: un disco
-' fino y ancho (en alambre se ve como dos circulos grandes) centrado en el tarugo.
-Const RADIO_ARO As Double = 0.06        ' m (60 mm de radio)
-Const ESPESOR_ARO As Double = 0.001     ' m
-' Con muchos tarugos marcados (casillas de la lista) NO se agranda ni se pone aro a cada uno: serian
-' cientos de cuerpos temporales y SolidWorks iria lento. Por encima de este numero solo se
-' resaltan las piezas; las casillas siguen funcionando igual.
+' Con muchos tarugos marcados (casillas de la lista) NO se agranda cada uno: serian cientos de
+' cuerpos temporales nuevos y SolidWorks iria lento. Por encima de este numero solo se resaltan
+' las piezas; las casillas siguen funcionando igual.
 Const MAX_RESALTE As Long = 25
 Private modoOriginal As Long
 Private modoCambiado As Boolean
-' Color de seleccion durante la revision: el aro del tarugo seleccionado se pinta con
-' "Elemento seleccionado 1" de SolidWorks (el color de los cuerpos temporales no se ve en
-' alambre). Se pone en ROJO mientras dura la revision y se restaura el original en Limpia.
-Private colorSelOriginal As Long
-Private colorSelCambiado As Boolean
 Private dibujando As Boolean           ' proteccion contra reentrada en DibujaTodo
 Private ultimoDibujo As Double     ' componente de referencia para Display3 (si hace falta)
 Private errorDisplay As String
@@ -71,10 +63,6 @@ End Function
 Public Sub ConstruyePreview(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
     Set swAppP = app
     Set mdlP = md
-    If Not colorSelCambiado Then
-        colorSelOriginal = app.GetUserPreferenceIntegerValue(swSystemColorsSelectedItem1)
-        If app.SetUserPreferenceIntegerValue(swSystemColorsSelectedItem1, RGBl(255, 0, 0)) Then colorSelCambiado = True
-    End If
     NFlat = 0
     Erase Flat
     resNombres = ""
@@ -142,24 +130,6 @@ Private Function CreaCuerpo(ByVal u As Long, ByVal k As Long, ByVal factor As Do
     Set CreaCuerpo = bd
 End Function
 
-' Aro del tarugo k de la union u: disco centrado en el punto medio del tarugo, con su mismo eje
-Private Function CreaAro(ByVal u As Long, ByVal k As Long) As SldWorks.Body2
-    Dim cyl(0 To 7) As Double
-    cyl(0) = Uniones(u).Pos(k).X - Uniones(u).N1.X * ESPESOR_ARO / 2
-    cyl(1) = Uniones(u).Pos(k).Y - Uniones(u).N1.Y * ESPESOR_ARO / 2
-    cyl(2) = Uniones(u).Pos(k).Z - Uniones(u).N1.Z * ESPESOR_ARO / 2
-    cyl(3) = Uniones(u).N1.X: cyl(4) = Uniones(u).N1.Y: cyl(5) = Uniones(u).N1.Z
-    cyl(6) = RADIO_ARO
-    cyl(7) = ESPESOR_ARO
-    Dim bd As SldWorks.Body2
-    Set bd = modeler.CreateBodyFromCyl(cyl)
-    ' EN COORDENADAS DE ENSAMBLAJE (sin compensar con invCB) y dibujado con Display3 Nothing: la
-    ' seleccion de un cuerpo temporal se resalta en el espacio del documento sin aplicar la
-    ' transformacion del componente de referencia; con el aro compensado (como el cilindro) el
-    ' resalte rojo salia desplazado, fuera del modelo.
-    Set CreaAro = bd
-End Function
-
 ' Limite de tarugos marcados que se resaltan uno a uno (lo consulta el formulario para avisar)
 Public Function MaxResalte() As Long
     MaxResalte = MAX_RESALTE
@@ -203,25 +173,24 @@ Public Sub DibujaTodo()
     dibujando = True
     On Error Resume Next
     Llamadas = Llamadas + 1
-    Dim i As Long, dem As Boolean, q As Boolean
+    Dim i As Long, dem As Boolean, q As Boolean, vis As Boolean
     dem = DemasiadosMarcados()
     For i = 0 To NFlat - 1
         Err.Clear
-        q = Flat(i).Sel And Not dem            ' resaltado completo (agrandado + aro)
-        If q <> Flat(i).Grande Then
-            Dim nb As SldWorks.Body2
-            Set nb = CreaCuerpo(Flat(i).U, Flat(i).K, IIf(q, FACTOR_SEL, FACTOR_NORMAL))
-            If Not nb Is Nothing Then Set Flat(i).Cuerpo = nb: Flat(i).Grande = q
-        End If
-        Flat(i).Cuerpo.Display3 compBase, ColorDe(i), swTempBodySelectable
-        If q Then
-            If Flat(i).Aro Is Nothing Then Set Flat(i).Aro = CreaAro(Flat(i).U, Flat(i).K)
-            If Not Flat(i).Aro Is Nothing Then Flat(i).Aro.Display3 Nothing, ColorDe(i), swTempBodySelectable
-        ElseIf Not Flat(i).Aro Is Nothing Then
-            ' Al desmarcar hay que SOLTAR el aro: dejar de dibujarlo no basta, el cuerpo temporal
-            ' sigue en pantalla mientras el objeto exista (igual que con el cilindro grande, que
-            ' solo desaparece al sustituirlo por uno normal).
-            Set Flat(i).Aro = Nothing
+        q = Flat(i).Sel And Not dem            ' resaltado: cilindro agrandado
+        ' Un tarugo ELIMINADO (o sin material) no se dibuja, salvo que este marcado (para repasarlo o
+        ' recuperarlo). Hay que SOLTAR el cuerpo: el cuerpo temporal sigue en pantalla mientras el
+        ' objeto exista (dejar de llamar a Display3 no lo quita).
+        vis = Uniones(Flat(i).U).Activo(Flat(i).K) Or Flat(i).Sel
+        If Not vis Then
+            If Not Flat(i).Cuerpo Is Nothing Then Set Flat(i).Cuerpo = Nothing: Flat(i).Grande = False
+        Else
+            If Flat(i).Cuerpo Is Nothing Or q <> Flat(i).Grande Then
+                Dim nb As SldWorks.Body2
+                Set nb = CreaCuerpo(Flat(i).U, Flat(i).K, IIf(q, FACTOR_SEL, FACTOR_NORMAL))
+                If Not nb Is Nothing Then Set Flat(i).Cuerpo = nb: Flat(i).Grande = q
+            End If
+            If Not Flat(i).Cuerpo Is Nothing Then Flat(i).Cuerpo.Display3 compBase, ColorDe(i), swTempBodySelectable
         End If
         If Err.Number <> 0 Then
             errorDisplay = Err.Number & ": " & Err.Description
@@ -236,11 +205,10 @@ Public Sub Redibuja()
     ' ActualizaResalte cambia la seleccion y eso provoca repintados propios: se hace ANTES de
     ' poner ultimoDibujo = 0. Si se hacia despues, uno de esos repintados consumia el permiso de
     ' dibujar (minimo 0,3 s entre dibujados) y el repintado final no redibujaba los tarugos:
-    ' quedaba el aro del tarugo anterior y no aparecia el nuevo hasta hacer clic en el dibujo.
+    ' quedaban los tarugos sin redibujar hasta hacer clic en el dibujo.
     ActualizaResalte
     ultimoDibujo = 0                       ' forzar el dibujado en el repintado que sigue
     If Not mdlP Is Nothing Then mdlP.GraphicsRedraw2
-    ActualizaResalte                       ' segunda pasada: selecciona el aro, ya dibujado
 End Sub
 
 ' Lista de nombres entre barras ("|a|b|"): anade n si no estaba
@@ -268,53 +236,20 @@ Private Sub ActualizaResalte()
             deseadas = AnadeNombre(deseadas, Piezas(Uniones(u).P2).Nombre)
         End If
     Next i
-    Dim hayAros As Boolean
-    For i = 0 To NFlat - 1
-        If Not Flat(i).Aro Is Nothing Then hayAros = True: Exit For
-    Next i
-    If deseadas = "" And resNombres = "" And Not hayAros Then Exit Sub
+    If deseadas = "" And resNombres = "" Then Exit Sub
 
-    ' componentes y cuerpos seleccionados ahora mismo (por la macro o por el usuario)
+    ' componentes seleccionados ahora mismo (por la macro o por el usuario)
     Dim sm As SldWorks.SelectionMgr, c As SldWorks.Component2, sel As String, n As Long
-    Dim o As Object, j As Long, aroSel() As Boolean
-    ReDim aroSel(0 To NFlat)
     Set sm = mdlP.SelectionManager
     n = sm.GetSelectedObjectCount2(-1)
     For i = 1 To n
         If sm.GetSelectedObjectType3(i, -1) = swSelCOMPONENTS Then
             Set c = sm.GetSelectedObject6(i, -1)
             If Not c Is Nothing Then sel = AnadeNombre(sel, c.Name2)
-        ElseIf sm.GetSelectedObjectType3(i, -1) = swSelSOLIDBODIES Then
-            Set o = sm.GetSelectedObject6(i, -1)
-            For j = 0 To NFlat - 1
-                If Not Flat(j).Aro Is Nothing Then
-                    If swAppP.IsSame(o, Flat(j).Aro) Then aroSel(j) = True
-                End If
-            Next j
         End If
     Next i
 
     seleccionPropia = True
-    ' El ARO del tarugo seleccionado tambien se selecciona: en alambre el color de los cuerpos
-    ' temporales no se aprecia (todos salen en el azul palido del modelo), pero SolidWorks
-    ' SI pinta la seleccion con color vivo. Se crea aqui (si no existe) para poder seleccionarlo;
-    ' al desmarcar se deselecciona ANTES de que DibujaTodo lo suelte.
-    Dim dem As Boolean
-    dem = DemasiadosMarcados()
-    For j = 0 To NFlat - 1
-        If Flat(j).Sel And Not dem Then
-            If Flat(j).Aro Is Nothing Then Set Flat(j).Aro = CreaAro(Flat(j).U, Flat(j).K)
-            ' OJO: aqui NO se dibuja (Display3 fuera del repintado colocaba un segundo aro fuera
-            ' del modelo). El aro lo dibuja DibujaTodo; como un cuerpo temporal solo se puede
-            ' seleccionar una vez dibujado, Redibuja llama dos veces a esta rutina: la segunda,
-            ' tras el dibujado, es la que lo selecciona.
-            If Not Flat(j).Aro Is Nothing Then
-                If Not aroSel(j) Then Flat(j).Aro.Select2 True, Nothing
-            End If
-        ElseIf aroSel(j) Then
-            Flat(j).Aro.DeSelect
-        End If
-    Next j
     Dim p As Long, nom As String
     For p = 0 To NPiezas - 1
         nom = "|" & Piezas(p).Nombre & "|"
@@ -375,10 +310,6 @@ Public Sub Limpia()
         Set vw = mdlP.GetFirstModelView
         If Not vw Is Nothing Then vw.DisplayMode = modoOriginal
         modoCambiado = False
-    End If
-    If colorSelCambiado Then
-        swAppP.SetUserPreferenceIntegerValue swSystemColorsSelectedItem1, colorSelOriginal
-        colorSelCambiado = False
     End If
     Redibuja
     Set mdlP = Nothing
