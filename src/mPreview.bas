@@ -208,6 +208,7 @@ Public Sub Redibuja()
     ActualizaResalte
     ultimoDibujo = 0                       ' forzar el dibujado en el repintado que sigue
     If Not mdlP Is Nothing Then mdlP.GraphicsRedraw2
+    ActualizaResalte                       ' segunda pasada: selecciona el aro, ya dibujado
 End Sub
 
 ' Lista de nombres entre barras ("|a|b|"): anade n si no estaba
@@ -268,11 +269,11 @@ Private Sub ActualizaResalte()
     ' al desmarcar se deselecciona ANTES de que DibujaTodo lo suelte.
     For j = 0 To NFlat - 1
         If Flat(j).Sel Then
-            If Flat(j).Aro Is Nothing Then
-                Set Flat(j).Aro = CreaAro(Flat(j).U, Flat(j).K)
-                ' un cuerpo temporal solo se puede seleccionar una vez dibujado
-                If Not Flat(j).Aro Is Nothing Then Flat(j).Aro.Display3 compBase, ColorDe(j), swTempBodySelectable
-            End If
+            If Flat(j).Aro Is Nothing Then Set Flat(j).Aro = CreaAro(Flat(j).U, Flat(j).K)
+            ' OJO: aqui NO se dibuja (Display3 fuera del repintado colocaba un segundo aro fuera
+            ' del modelo). El aro lo dibuja DibujaTodo; como un cuerpo temporal solo se puede
+            ' seleccionar una vez dibujado, Redibuja llama dos veces a esta rutina: la segunda,
+            ' tras el dibujado, es la que lo selecciona.
             If Not Flat(j).Aro Is Nothing Then
                 If Not aroSel(j) Then Flat(j).Aro.Select2 True, Nothing
             End If
