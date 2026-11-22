@@ -45,7 +45,10 @@ Public Sub CfgPorDefecto()
         .Tol = Leido("Tol", 0.1)
         .AreaMinCara = 100
         .MinMaterial = 3
-        .SepMinFactor = 3
+        ' 6,25 x diametro = 50 mm con tarugos de 8: antes 3 (24 mm) y en uniones cortas salian tarugos
+        ' pegados (3 en 150 mm, a 25 mm). Con 50 mm una union de 150 mm lleva 2 tarugos (no se queda
+        ' en 1, que dejaria girar la pieza) y las uniones de 200 mm o mas siguen con 3.
+        .SepMinFactor = 6.25
         .TolAngulo = 0.9998
     End With
 End Sub

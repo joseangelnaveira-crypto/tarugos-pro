@@ -37,7 +37,8 @@ Private Function CabenN(ByVal Lmm As Double, ByVal d As Double, ByVal n As Long,
             Exit Function
         End If
         sep = util / (n - 1)
-        If sep < Cfg.SepMinFactor * Cfg.Diametro Then
+        ' (tolerancia de 0,001 mm: una union de 200,0000 mm medida como 199,9999 no debe perder un tarugo)
+        If sep < Cfg.SepMinFactor * Cfg.Diametro - 0.001 Then
             CabenN = "Separacion entre tarugos (" & Format(sep, "0.0") & " mm) menor que la minima (" & _
                      Format(Cfg.SepMinFactor * Cfg.Diametro, "0.0") & " mm)"
         End If
