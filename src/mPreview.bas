@@ -40,6 +40,10 @@ Const FACTOR_SEL As Double = 3.5        ' el tarugo seleccionado se agranda para
 ' fino y ancho (en alambre se ve como dos circulos grandes) centrado en el tarugo.
 Const RADIO_ARO As Double = 0.06        ' m (60 mm de radio)
 Const ESPESOR_ARO As Double = 0.001     ' m
+' Con muchos tarugos marcados (casillas de la lista) NO se agranda ni se pone aro a cada uno: serian
+' cientos de cuerpos temporales y SolidWorks iria lento. Por encima de este numero solo se
+' resaltan las piezas; las casillas siguen funcionando igual.
+Const MAX_RESALTE As Long = 25
 Private modoOriginal As Long
 Private modoCambiado As Boolean
 ' Color de seleccion durante la revision: el aro del tarugo seleccionado se pinta con
@@ -147,6 +151,15 @@ Private Function CreaAro(ByVal u As Long, ByVal k As Long) As SldWorks.Body2
     Set CreaAro = bd
 End Function
 
+' True si hay mas tarugos marcados de los que se resaltan uno a uno (MAX_RESALTE)
+Private Function DemasiadosMarcados() As Boolean
+    Dim i As Long, n As Long
+    For i = 0 To NFlat - 1
+        If Flat(i).Sel Then n = n + 1
+    Next i
+    DemasiadosMarcados = (n > MAX_RESALTE)
+End Function
+
 Private Function ColorDe(i As Long) As Long
     If Flat(i).Sel Then
         ColorDe = RGBl(230, 20, 20)            ' seleccionado (a quitar): rojo y mas grande
@@ -176,16 +189,18 @@ Public Sub DibujaTodo()
     dibujando = True
     On Error Resume Next
     Llamadas = Llamadas + 1
-    Dim i As Long
+    Dim i As Long, dem As Boolean, q As Boolean
+    dem = DemasiadosMarcados()
     For i = 0 To NFlat - 1
         Err.Clear
-        If Flat(i).Sel <> Flat(i).Grande Then
+        q = Flat(i).Sel And Not dem            ' resaltado completo (agrandado + aro)
+        If q <> Flat(i).Grande Then
             Dim nb As SldWorks.Body2
-            Set nb = CreaCuerpo(Flat(i).U, Flat(i).K, IIf(Flat(i).Sel, FACTOR_SEL, FACTOR_NORMAL))
-            If Not nb Is Nothing Then Set Flat(i).Cuerpo = nb: Flat(i).Grande = Flat(i).Sel
+            Set nb = CreaCuerpo(Flat(i).U, Flat(i).K, IIf(q, FACTOR_SEL, FACTOR_NORMAL))
+            If Not nb Is Nothing Then Set Flat(i).Cuerpo = nb: Flat(i).Grande = q
         End If
         Flat(i).Cuerpo.Display3 compBase, ColorDe(i), swTempBodySelectable
-        If Flat(i).Sel Then
+        If q Then
             If Flat(i).Aro Is Nothing Then Set Flat(i).Aro = CreaAro(Flat(i).U, Flat(i).K)
             If Not Flat(i).Aro Is Nothing Then Flat(i).Aro.Display3 Nothing, ColorDe(i), swTempBodySelectable
         ElseIf Not Flat(i).Aro Is Nothing Then
@@ -270,8 +285,10 @@ Private Sub ActualizaResalte()
     ' temporales no se aprecia (todos salen en el azul palido del modelo), pero SolidWorks
     ' SI pinta la seleccion con color vivo. Se crea aqui (si no existe) para poder seleccionarlo;
     ' al desmarcar se deselecciona ANTES de que DibujaTodo lo suelte.
+    Dim dem As Boolean
+    dem = DemasiadosMarcados()
     For j = 0 To NFlat - 1
-        If Flat(j).Sel Then
+        If Flat(j).Sel And Not dem Then
             If Flat(j).Aro Is Nothing Then Set Flat(j).Aro = CreaAro(Flat(j).U, Flat(j).K)
             ' OJO: aqui NO se dibuja (Display3 fuera del repintado colocaba un segundo aro fuera
             ' del modelo). El aro lo dibuja DibujaTodo; como un cuerpo temporal solo se puede
@@ -322,10 +339,14 @@ Public Sub SincronizaSeleccion()
             Next j
         End If
     Next i
-    ' Se sincroniza SIEMPRE, tambien cuando no hay ningun tarugo seleccionado en el modelo:
-    ' si no, al desmarcar un tarugo en el 3D (clic en vacio o Ctrl+clic) quedaba marcado
-    ' en la lista y dibujado en rojo con su aro.
-    Formulario.SeleccionaDesdeModelo hit
+    ' Las casillas de la lista son la MEMORIA del usuario (lo que va a quitar): un clic en el modelo
+    ' que no toque ningun tarugo (una pieza, el vacio) NO las borra. Un clic sobre un tarugo
+    ' lo ANADE a los marcados (la lista se desplaza hasta el); para desmarcar, la casilla.
+    Dim cualquiera As Boolean
+    For j = 0 To NFlat - 1
+        If hit(j) Then cualquiera = True
+    Next j
+    If cualquiera Then Formulario.SeleccionaDesdeModelo hit
 End Sub
 
 Public Sub Limpia()

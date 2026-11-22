@@ -2,6 +2,15 @@ Option Explicit
 '==============================================================================
 ' frmRevision - FASE 3: revision de los tarugos propuestos (formulario NO modal,
 ' para poder seguir seleccionando tarugos en el modelo 3D).
+'
+' COMO SE USA (marcado con casillas):
+'   - Cada fila tiene una CASILLA. Marcar = "este tarugo es de los que voy a tratar".
+'   - Los marcados se resaltan en el 3D (sus dos piezas y un aro rojo).
+'   - QUITAR MARCADOS / RESTAURAR MARCADOS actuan sobre todos los marcados.
+'     Despues la accion se "consume": las casillas se limpian y el tarugo queda en
+'     la lista como ELIMINADO (para recuperarlo: MARCAR ELIMINADOS + RESTAURAR).
+'   - Un clic sobre un tarugo en el 3D lo AGREGA a los marcados (nunca los borra);
+'     para desmarcar, la casilla.
 '==============================================================================
 
 Private actualizando As Boolean
@@ -9,7 +18,11 @@ Public Aceptado As Boolean
 
 Private lblResumen As MSForms.Label
 Private lblInfo As MSForms.Label
+Private lblMarcados As MSForms.Label
 Private WithEvents lstTarugos As MSForms.ListBox
+Private WithEvents btnMarcarTodos As MSForms.CommandButton
+Private WithEvents btnDesmarcarTodos As MSForms.CommandButton
+Private WithEvents btnMarcarEliminados As MSForms.CommandButton
 Private WithEvents btnAceptarTodos As MSForms.CommandButton
 Private WithEvents btnEliminar As MSForms.CommandButton
 Private WithEvents btnRestaurar As MSForms.CommandButton
@@ -19,11 +32,12 @@ Private WithEvents btnCancelar As MSForms.CommandButton
 Private WithEvents btnMecanizar As MSForms.CommandButton
 
 Private Function NuevoBoton(ByVal nombre As String, ByVal texto As String, ByVal x As Single, ByVal y As Single, _
-                            ByVal w As Single, ByVal h As Single) As MSForms.CommandButton
+                            ByVal w As Single, ByVal h As Single, Optional ByVal ayuda As String = "") As MSForms.CommandButton
     Dim b As MSForms.CommandButton
     Set b = Me.Controls.Add("Forms.CommandButton.1", nombre, True)
     b.Caption = texto
     b.Left = x: b.Top = y: b.Width = w: b.Height = h
+    If ayuda <> "" Then b.ControlTipText = ayuda
     Set NuevoBoton = b
 End Function
 
@@ -31,24 +45,34 @@ End Function
 Private Sub UserForm_Initialize()
     actualizando = True          ' crear controles dispara eventos: ignorarlos
     Me.Width = 654
-    Me.Height = 470
+    Me.Height = 504
     Set lblResumen = Me.Controls.Add("Forms.Label.1", "lblResumen", True)
     lblResumen.Left = 12: lblResumen.Top = 6: lblResumen.Width = 620: lblResumen.Height = 54
     Set lstTarugos = Me.Controls.Add("Forms.ListBox.1", "lstTarugos", True)
     lstTarugos.Left = 12: lstTarugos.Top = 66: lstTarugos.Width = 620: lstTarugos.Height = 222
     lstTarugos.ColumnCount = 5
     lstTarugos.ColumnWidths = "110 pt;125 pt;125 pt;160 pt;80 pt"
-    lstTarugos.MultiSelect = 2
+    lstTarugos.ListStyle = 1         ' fmListStyleOption: una CASILLA por fila
+    lstTarugos.MultiSelect = 1       ' fmMultiSelectMulti: cada clic marca/desmarca sin tocar los demas
+    lstTarugos.ControlTipText = "Marca con la casilla los tarugos que quieras quitar o restaurar. Los marcados se resaltan en el 3D."
+    ' fila de marcado, justo debajo de la lista
+    Set btnMarcarTodos = NuevoBoton("btnMarcarTodos", "MARCAR TODOS", 12, 294, 108, 24, "Marca todos los tarugos de la lista")
+    Set btnDesmarcarTodos = NuevoBoton("btnDesmarcarTodos", "DESMARCAR TODOS", 124, 294, 120, 24, "Quita todas las marcas (no cambia ningun tarugo)")
+    Set btnMarcarEliminados = NuevoBoton("btnMarcarEliminados", "MARCAR ELIMINADOS", 248, 294, 130, 24, "Marca solo los tarugos que ya has quitado, para repasarlos en el 3D o recuperarlos")
+    Set lblMarcados = Me.Controls.Add("Forms.Label.1", "lblMarcados", True)
+    lblMarcados.Left = 384: lblMarcados.Top = 299: lblMarcados.Width = 248: lblMarcados.Height = 18
+    lblMarcados.TextAlign = 3        ' fmTextAlignRight
+    lblMarcados.Font.Bold = True
     Set lblInfo = Me.Controls.Add("Forms.Label.1", "lblInfo", True)
-    lblInfo.Left = 12: lblInfo.Top = 294: lblInfo.Width = 620: lblInfo.Height = 30
+    lblInfo.Left = 12: lblInfo.Top = 322: lblInfo.Width = 620: lblInfo.Height = 30
     lblInfo.ForeColor = 192
-    Set btnAceptarTodos = NuevoBoton("btnAceptarTodos", "ACEPTAR TODOS", 12, 330, 200, 28)
-    Set btnEliminar = NuevoBoton("btnEliminar", "ELIMINAR SELECCIONADO", 218, 330, 204, 28)
-    Set btnRestaurar = NuevoBoton("btnRestaurar", "RESTAURAR SELECCIONADO", 428, 330, 204, 28)
-    Set btnEliminarUnion = NuevoBoton("btnEliminarUnion", "ELIMINAR UNION COMPLETA", 12, 364, 310, 28)
-    Set btnRestaurarUnion = NuevoBoton("btnRestaurarUnion", "RESTAURAR UNION COMPLETA", 326, 364, 306, 28)
-    Set btnCancelar = NuevoBoton("btnCancelar", "CANCELAR", 12, 402, 200, 30)
-    Set btnMecanizar = NuevoBoton("btnMecanizar", "ACEPTAR Y MECANIZAR", 326, 402, 306, 30)
+    Set btnAceptarTodos = NuevoBoton("btnAceptarTodos", "ACEPTAR TODOS", 12, 358, 200, 28, "Reactiva todos los tarugos de las uniones validas")
+    Set btnEliminar = NuevoBoton("btnEliminar", "QUITAR MARCADOS", 218, 358, 204, 28, "Quita (no se taladran) todos los tarugos marcados")
+    Set btnRestaurar = NuevoBoton("btnRestaurar", "RESTAURAR MARCADOS", 428, 358, 204, 28, "Vuelve a activar los tarugos marcados")
+    Set btnEliminarUnion = NuevoBoton("btnEliminarUnion", "QUITAR UNION COMPLETA", 12, 392, 310, 28, "Quita todos los tarugos de las uniones a las que pertenece algun marcado")
+    Set btnRestaurarUnion = NuevoBoton("btnRestaurarUnion", "RESTAURAR UNION COMPLETA", 326, 392, 306, 28, "Reactiva todos los tarugos de las uniones a las que pertenece algun marcado")
+    Set btnCancelar = NuevoBoton("btnCancelar", "CANCELAR", 12, 430, 200, 30)
+    Set btnMecanizar = NuevoBoton("btnMecanizar", "ACEPTAR Y MECANIZAR", 326, 430, 306, 30)
     actualizando = False
 End Sub
 
@@ -57,7 +81,8 @@ End Sub
 '------------------------------------------------------------------------------
 Public Sub Refresca()
     actualizando = True
-    Dim i As Long, u As Long, k As Long, p As TV3
+    Dim i As Long, u As Long, k As Long, p As TV3, ti As Long
+    ti = lstTarugos.TopIndex          ' se conserva el desplazamiento: no volver arriba tras cada accion
     lstTarugos.Clear
     For i = 0 To NFlat - 1
         u = Flat(i).U: k = Flat(i).K
@@ -66,7 +91,9 @@ Public Sub Refresca()
         lstTarugos.List(i, 1) = Piezas(Uniones(u).P1).Nombre
         lstTarugos.List(i, 2) = Piezas(Uniones(u).P2).Nombre
         lstTarugos.List(i, 3) = Format(p.X * 1000, "0.0") & " ; " & Format(p.Y * 1000, "0.0") & " ; " & Format(p.Z * 1000, "0.0")
-        If Not Uniones(u).Activo(k) Then
+        If Uniones(u).SinMat(k) Then
+            lstTarugos.List(i, 4) = "SIN MATERIAL"
+        ElseIf Not Uniones(u).Activo(k) Then
             lstTarugos.List(i, 4) = "ELIMINADO"
         ElseIf Uniones(u).Estado = "VALIDA" Then
             lstTarugos.List(i, 4) = "ACTIVO"
@@ -75,6 +102,7 @@ Public Sub Refresca()
         End If
         lstTarugos.Selected(i) = Flat(i).Sel
     Next i
+    If ti > 0 And ti < lstTarugos.ListCount Then lstTarugos.TopIndex = ti
 
     Dim nPz As Long, nV As Long, nD As Long
     For i = 0 To NPiezas - 1
@@ -88,17 +116,62 @@ Public Sub Refresca()
         "Tarugos: " & ContarTarugos() & "  (activos " & ContarActivos() & ", eliminados/pendientes " & (ContarTarugos() - ContarActivos()) & ")" & vbCrLf & _
         "Diametro " & Cfg.Diametro & " mm   Profundidad pieza 1: " & Cfg.Prof1 & " mm   pieza 2: " & Cfg.Prof2 & " mm"
     actualizando = False
+    ActualizaContador
 End Sub
 
-' Llamado desde mPreview cuando se hace clic sobre un tarugo en el modelo 3D
-Public Sub SeleccionaDesdeModelo(hit() As Boolean)
-    actualizando = True
-    Dim i As Long
+' "Marcados: 7 de 59  (3 activos, 4 eliminados)"
+Private Sub ActualizaContador()
+    If lblMarcados Is Nothing Then Exit Sub
+    Dim i As Long, n As Long, nAct As Long
     For i = 0 To NFlat - 1
-        Flat(i).Sel = hit(i)
-        lstTarugos.Selected(i) = hit(i)
+        If Flat(i).Sel Then
+            n = n + 1
+            If Uniones(Flat(i).U).Activo(Flat(i).K) Then nAct = nAct + 1
+        End If
+    Next i
+    If n = 0 Then
+        lblMarcados.Caption = "Marcados: 0 de " & NFlat
+    Else
+        lblMarcados.Caption = "Marcados: " & n & " de " & NFlat & "  (" & nAct & " activos, " & (n - nAct) & " eliminados)"
+    End If
+End Sub
+
+' Pone la marca (Flat.Sel + casilla) de todos los tarugos segun la funcion que se pida:
+' modo 0 = ninguno, 1 = todos, 2 = solo los eliminados
+Private Sub MarcaSegun(ByVal modo As Long)
+    actualizando = True
+    Dim i As Long, v As Boolean
+    For i = 0 To NFlat - 1
+        Select Case modo
+            Case 0: v = False
+            Case 1: v = True
+            Case Else: v = Not Uniones(Flat(i).U).Activo(Flat(i).K)
+        End Select
+        Flat(i).Sel = v
+        lstTarugos.Selected(i) = v
     Next i
     actualizando = False
+    ActualizaContador
+    MuestraInfo
+    mPreview.Redibuja
+End Sub
+
+' Llamado desde mPreview cuando se hace clic sobre un tarugo en el modelo 3D:
+' se AGREGA a los marcados (los que ya estaban marcados se conservan) y la lista se desplaza hasta el
+Public Sub SeleccionaDesdeModelo(hit() As Boolean)
+    actualizando = True
+    Dim i As Long, primero As Long
+    primero = -1
+    For i = 0 To NFlat - 1
+        If hit(i) And Not Flat(i).Sel Then
+            Flat(i).Sel = True
+            lstTarugos.Selected(i) = True
+            If primero < 0 Then primero = i
+        End If
+    Next i
+    If primero >= 0 Then lstTarugos.TopIndex = primero
+    actualizando = False
+    ActualizaContador
     MuestraInfo
     mPreview.Redibuja
 End Sub
@@ -117,7 +190,7 @@ Private Sub MuestraInfo()
             Exit For
         End If
     Next i
-    lblInfo.Caption = lblInfo.Caption & "  [rep=" & mPreview.Llamadas & " err=" & mPreview.ErrorDeDisplay & "]"
+    If mPreview.ErrorDeDisplay <> "" Then lblInfo.Caption = lblInfo.Caption & "  [err=" & mPreview.ErrorDeDisplay & "]"
 End Sub
 
 Private Sub lstTarugos_Change()
@@ -126,8 +199,22 @@ Private Sub lstTarugos_Change()
     For i = 0 To NFlat - 1
         Flat(i).Sel = lstTarugos.Selected(i)
     Next i
+    ActualizaContador
     MuestraInfo
     mPreview.Redibuja
+End Sub
+
+Private Sub btnMarcarTodos_Click()
+    MarcaSegun 1
+End Sub
+
+Private Sub btnDesmarcarTodos_Click()
+    MarcaSegun 0
+End Sub
+
+Private Sub btnMarcarEliminados_Click()
+    MarcaSegun 2
+    If ContarTarugos() - ContarActivos() = 0 Then lblInfo.Caption = "No hay ningun tarugo eliminado."
 End Sub
 
 Private Sub btnAceptarTodos_Click()
@@ -136,54 +223,73 @@ Private Sub btnAceptarTodos_Click()
     mPreview.Redibuja
 End Sub
 
+' Limpia las marcas tras una accion (la accion "consume" las marcas) y refresca lista y 3D
+Private Sub TerminaAccion(ByVal mensaje As String)
+    Dim i As Long
+    For i = 0 To NFlat - 1
+        Flat(i).Sel = False
+    Next i
+    Refresca
+    lblInfo.Caption = mensaje
+    mPreview.Redibuja
+End Sub
+
 Private Sub btnEliminar_Click()
     Dim i As Long, n As Long
     For i = 0 To NFlat - 1
-        If lstTarugos.Selected(i) Then
+        If Flat(i).Sel Then
+            If Uniones(Flat(i).U).Activo(Flat(i).K) Then n = n + 1
             Uniones(Flat(i).U).Activo(Flat(i).K) = False
-            n = n + 1
         End If
     Next i
-    Refresca
-    lblInfo.Caption = n & " tarugo(s) eliminado(s)"
-    mPreview.Redibuja
+    If n = 0 Then
+        lblInfo.Caption = "No hay tarugos activos marcados: marca con la casilla los que quieras quitar."
+        Exit Sub
+    End If
+    TerminaAccion n & " tarugo(s) quitado(s). Siguen en la lista como ELIMINADO: para recuperarlos, MARCAR ELIMINADOS y RESTAURAR MARCADOS."
 End Sub
 
 Private Sub btnRestaurar_Click()
-    Dim i As Long, n As Long
+    Dim i As Long, n As Long, nSin As Long
     For i = 0 To NFlat - 1
-        If lstTarugos.Selected(i) Then
-            Uniones(Flat(i).U).Activo(Flat(i).K) = True
-            n = n + 1
+        If Flat(i).Sel Then
+            If Uniones(Flat(i).U).SinMat(Flat(i).K) Then
+                nSin = nSin + 1                       ' cae en un hueco: no se reactiva
+            ElseIf Not Uniones(Flat(i).U).Activo(Flat(i).K) Then
+                Uniones(Flat(i).U).Activo(Flat(i).K) = True
+                n = n + 1
+            End If
         End If
     Next i
-    Refresca
-    lblInfo.Caption = n & " tarugo(s) restaurado(s)"
-    mPreview.Redibuja
+    If n = 0 And nSin = 0 Then
+        lblInfo.Caption = "No hay tarugos eliminados marcados: marca con la casilla los que quieras recuperar."
+        Exit Sub
+    End If
+    TerminaAccion n & " tarugo(s) restaurado(s)." & IIf(nSin > 0, " " & nSin & " sin material (hueco) no se restauran.", "")
 End Sub
 
 Private Sub btnEliminarUnion_Click()
-    Dim i As Long, hecho() As Boolean
+    Dim i As Long, hecho() As Boolean, n As Long
     ReDim hecho(0 To NUniones)
     For i = 0 To NFlat - 1
-        If lstTarugos.Selected(i) Then
-            If Not hecho(Flat(i).U) Then EliminaUnion Flat(i).U: hecho(Flat(i).U) = True
+        If Flat(i).Sel Then
+            If Not hecho(Flat(i).U) Then EliminaUnion Flat(i).U: hecho(Flat(i).U) = True: n = n + 1
         End If
     Next i
-    Refresca
-    mPreview.Redibuja
+    If n = 0 Then lblInfo.Caption = "Marca algun tarugo de la union que quieras quitar.": Exit Sub
+    TerminaAccion n & " union(es) quitada(s) entera(s)."
 End Sub
 
 Private Sub btnRestaurarUnion_Click()
-    Dim i As Long, hecho() As Boolean
+    Dim i As Long, hecho() As Boolean, n As Long
     ReDim hecho(0 To NUniones)
     For i = 0 To NFlat - 1
-        If lstTarugos.Selected(i) Then
-            If Not hecho(Flat(i).U) Then RestauraUnion Flat(i).U: hecho(Flat(i).U) = True
+        If Flat(i).Sel Then
+            If Not hecho(Flat(i).U) Then RestauraUnion Flat(i).U: hecho(Flat(i).U) = True: n = n + 1
         End If
     Next i
-    Refresca
-    mPreview.Redibuja
+    If n = 0 Then lblInfo.Caption = "Marca algun tarugo de la union que quieras restaurar.": Exit Sub
+    TerminaAccion n & " union(es) restaurada(s) entera(s)."
 End Sub
 
 Private Sub btnCancelar_Click()
