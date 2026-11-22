@@ -1,30 +1,36 @@
 # Tarugos Pro - macro VBA para SolidWorks
 
-Detecta uniones entre tableros de un ensamblaje, calcula la distribucion de tarugos y crea
-**taladros reales** (cortes extruidos editables) en los archivos de cada pieza.
-Probada en SolidWorks 2024 (revision 32.3). Las funciones de la API usadas existen tambien en
-2025/2026, pero **no se ha probado en esas versiones**.
+Detecta uniones entre tableros, calcula la distribucion de tarugos, deja revisarlos y crea
+**taladros reales** (cortes extruidos editables). Funciona con **ensamblajes** (un archivo por pieza) y con
+**piezas multicuerpo** (cada cuerpo solido es un tablero), con el mismo formulario y el mismo flujo.
+Probada en SolidWorks 2024 (SP3.1). Las funciones de la API usadas existen tambien en 2025/2026,
+pero **no se ha probado en esas versiones**.
 
 ## Instalacion
 **En otro equipo basta copiar UN archivo: `TarugosPro.swp`** (lleva dentro todos los modulos, la clase y los formularios).
-Abrirlo con Herramientas > Macro > Editar... Lo de `src/` y `formularios/` solo hace falta para modificar el codigo o reconstruir el .swp.
-Si se cambia el codigo de `src/`, hay que volver a guardar el .swp desde el editor de SolidWorks para que no quede desfasado.
+`src/` y `formularios/` solo hacen falta para modificar el codigo o reconstruir el `.swp`.
 
-1. SolidWorks: Herramientas > Macro > Editar... y abrir `TarugosPro.swp` (esta carpeta).
-2. Para ejecutar: abre un ensamblaje y, en el editor, F5 > `Tarugos_Principal`
-   (o Herramientas > Macro > Ejecutar... y asigna la macro a un boton si quieres).
-3. El proyecto se reconstruye importando los modulos de la carpeta `Fase8` (.bas / .cls) y creando
-   un UserForm llamado `frmPrincipal` con el codigo de `frmPrincipal_codigo.txt`, y otro
-   `frmRevision` con `frmRevision_codigo.txt` (los .frm no se pueden importar: los controles se crean por codigo).
+### Ejecutar
+- Herramientas > Macro > Ejecutar... y elegir `TarugosPro.swp` (procedimiento `main`).
+
+### Boton en SolidWorks
+1. Herramientas > Personalizar > pestana **Comandos** > categoria **Macro**.
+2. Arrastrar **Macro personalizada** a una barra de herramientas.
+3. En el cuadro: **Macro** = Examinar > `TarugosPro.swp`; **Metodo** = `main` (`TarugosPro1.main`); elegir imagen y sugerencia.
+4. Aceptar. (Si se mueve el `.swp` de carpeta hay que reasignar el boton. Tambien se puede asignar un atajo en la pestana Teclado.)
 
 ## Uso
-1. `Tarugos_Principal` abre la ventana con los parametros. **AUTOMATICO** analiza todo el ensamblaje;
-   **MANUAL**: selecciona antes 2 o mas componentes y pulsa MANUAL (solo las uniones entre ellos).
-2. Aparece la **revision**: lista de tarugos y cilindros temporales en el modelo (se ven en vista de alambre).
-   Puedes eliminar/restaurar un tarugo o una union completa. Las uniones dudosas empiezan desactivadas.
-3. **ACEPTAR Y MECANIZAR** pide confirmacion, hace copia de seguridad de cada pieza
-   (carpeta `Respaldo_Tarugos_<fecha>` junto al ensamblaje), crea los taladros y guarda cada archivo una vez.
-4. **DESHACER MECANIZADO** (o `Fase6_Deshacer`) elimina solo las operaciones creadas por la macro.
+1. Abre un **ensamblaje** o una **pieza multicuerpo** (guardada: la macro modifica el archivo) y ejecuta la macro.
+2. La ventana de parametros: **AUTOMATICO** analiza todo; **MANUAL**: selecciona antes 2 o mas componentes
+   (o, en una pieza, 2 o mas cuerpos) y pulsa MANUAL (solo las uniones entre ellos).
+3. Aparece la **revision**: lista con una casilla por tarugo y cilindros temporales en el modelo (la vista pasa a alambre
+   y se restaura al cerrar).
+   - Marcar una casilla (o varias: clic, Mays+clic, Ctrl+E) resalta ese tarugo (mas grande) y sus dos piezas en el 3D.
+   - **QUITAR MARCADOS / RESTAURAR MARCADOS**, **MARCAR TODOS / DESMARCAR TODOS / MARCAR ELIMINADOS**, **QUITAR / RESTAURAR UNION COMPLETA**,
+     **ACEPTAR TODOS**. Un tarugo eliminado deja de dibujarse en el 3D. Las uniones dudosas empiezan desactivadas.
+4. **ACEPTAR Y MECANIZAR** pide confirmacion, hace copia de seguridad (carpeta `Respaldo_Tarugos_<fecha>` junto al archivo),
+   crea los taladros y guarda cada archivo una vez.
+5. **DESHACER MECANIZADO** elimina solo las operaciones creadas por la macro (en ensamblaje y en pieza).
 
 ## Parametros (milimetros)
 | Parametro | Defecto | Significado |
@@ -39,42 +45,45 @@ Si se cambia el codigo de `src/`, hay que volver a guardar el .swp desde el edit
 | Incremento de tarugos | 1 | ...se anaden estos tarugos |
 | Tolerancia geometrica | 0,1 | Para decidir si dos caras estan en contacto |
 
-N = N inicial + IncN x ENTERO((L - Lref) / IncLong). Si en una union corta no caben N tarugos (con la distancia a los
-extremos y la separacion minima), se prueba con uno menos, y asi hasta 1 tarugo centrado (anotado en el motivo de la union).
+N = N inicial + IncN x ENTERO((L - Lref) / IncLong). Separacion minima entre tarugos: 50 mm (6,25 x diametro). Si en una union
+corta no caben N tarugos, se prueba con uno menos hasta 1 tarugo centrado (anotado en el motivo de la union).
 Si un tarugo cae en un hueco de alguna de las piezas, se desplaza (manteniendo la distancia a los extremos) o, si no hay
-sitio, se descarta en las dos piezas y se marca en rojo oscuro ("sin material"). Los ajustes se guardan en el registro de Windows
+sitio, se descarta en las dos piezas y se marca "SIN MATERIAL". Los ajustes se guardan en el registro de Windows
 (`HKCU\Software\VB and VBA Program Settings\TarugosPro`).
 
 ## Resultados
 - Operaciones nombradas `UNION_001_TARUGO_002_<pieza>_D8_P31-11`, con su posicion en el comentario (`TARUGO_META=...`).
-- Informes: `Informe_Fase5.txt` y `Informe_Tarugos.csv` (separador `;`) en la carpeta de respaldo;
-  `Tarugos_Fase2_*.txt` junto al ensamblaje con el analisis y los tiempos.
+- Informes `Informe_Fase5.txt` e `Informe_Tarugos.csv` (separador `;`) en la carpeta de respaldo.
 - Volver a ejecutar no duplica: los taladros ya creados se reconocen y se omiten.
+- En una pieza multicuerpo todos los taladros van en el mismo archivo y cada corte afecta solo al cuerpo de su pieza.
 
 ## Modificar o eliminar taladros
-- Editar: en el arbol de la pieza, clic derecho en la operacion `UNION_...` > Editar operacion.
-- Eliminar todos los de la macro: `Fase6_Deshacer`. No se tocan operaciones que no lleven la marca de la macro.
+- Editar: en el arbol, clic derecho en la operacion `UNION_...` > Editar operacion.
+- Eliminar todos los de la macro: DESHACER MECANIZADO. No se tocan operaciones que no lleven la marca de la macro.
 
-## Piezas repetidas
+## Piezas repetidas (solo ensamblajes)
 Si una misma pieza aparece varias veces y las instancias necesitan taladros distintos, la macro pregunta:
 SI = modificar el original (afecta a todas), NO = copia independiente (`<pieza>_T2.SLDPRT`) sustituida en este
 ensamblaje, CANCELAR = omitir.
 
 ## Limitaciones conocidas
-- Probada solo con tableros rectangulares a 90 grados, pocas decenas de piezas y SolidWorks 2024.
-- Piezas inclinadas, uniones canto con canto (quedan "dudosas"), contornos curvos y geometrias complejas: sin probar.
-- Piezas **virtuales** (guardadas dentro del ensamblaje, p. ej. las creadas por simetria) se omiten: guardalas
-  antes como archivo externo.
-- Solo hay un modo de analisis (rapido, con cajas envolventes); el "analisis completo" del documento original no esta implementado.
-- Los cilindros de previsualizacion quedan dentro de las piezas: hay que verlos en alambre; la seleccion con clic en 3D no esta confirmada.
+- **Uniones inclinadas (p. ej. ingletes a 45 grados): la macro no las taladra, a proposito.** No aparecen en la lista.
+- Probada con tableros rectangulares a 90 grados, hasta unas decenas de piezas y SolidWorks 2024.
+- Sin probar: ensamblajes cuyos componentes sean multicuerpo, contornos curvos, el mueble real con la version actual y SolidWorks 2025/2026.
+- Uniones canto con canto quedan "dudosas".
+- Piezas **virtuales** (guardadas dentro del ensamblaje, p. ej. por simetria) se omiten: guardalas antes como archivo externo.
+- Solo hay un modo de analisis (rapido, con cajas envolventes).
+- Mecanizar abre cada pieza con su ventana (SolidWorks necesita el documento activo para croquizar) y cierra las que abrio la macro.
+- El clic en el 3D sobre un tarugo no es fiable: la lista es la forma de elegir.
 - Deshacer solo borra: no restaura desde la copia de seguridad ni revierte la sustitucion por copias independientes.
-- Cancelar con ESC durante el analisis esta implementado pero no probado.
-- El informe CSV esta escrito pero no se ha comprobado su contenido en una ejecucion real.
 - PDM: no integrado. Todo el acceso a archivos esta en `mGuardado` para anadirlo mas adelante.
-- Los formularios no son modales para el usuario en la revision; si SolidWorks se queda congelado, cerrar el proceso.
+- La ventana de revision no es modal; si SolidWorks se queda congelado, cerrar el proceso.
+- Despues de ejecutar la macro, el editor VBA a veces no escribe el `.swp` en disco: para cambiar el codigo,
+  reiniciar SolidWorks antes de abrir el editor y comprobar el guardado.
 
 ## Modulos
-mConfig (parametros) - mVec, mPoligono (geometria 2D/3D) - mGeometria (piezas y caras) - mUniones (deteccion) -
-mPosiciones (reparto) - mPreview, mEdicion, cEventos, frmRevision (revision) - mTaladros (cortes reales) -
+mConfig (parametros) - mVec, mPoligono (geometria) - mGeometria (piezas, cuerpos y caras) - mUniones (deteccion) -
+mHuecos, mPosiciones (reparto) - mPreview, mEdicion, cEventos, frmRevision (revision) - mTaladros (cortes reales) -
 mGuardado (acceso a archivos) - mDuplicados (marcas y duplicados) - mRecuperacion (deshacer) - mOptim (progreso) -
-mInformes (CSV) - mPrueba (ensamblajes de prueba) - mMain (puntos de entrada) - frmPrincipal.
+mInformes (CSV) - mPrueba (constructores de ensamblajes de prueba, sin uso) - mMain (punto de entrada) - frmPrincipal.
+Pruebas: `pruebas/` (generador del ensamblaje de pruebas por COM).
