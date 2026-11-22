@@ -25,7 +25,7 @@ pero **no se ha probado en esas versiones**.
    (o, en una pieza, 2 o mas cuerpos) y pulsa MANUAL (solo las uniones entre ellos).
 3. Aparece la **revision**: lista con una casilla por tarugo y cilindros temporales en el modelo (la vista pasa a alambre
    y se restaura al cerrar).
-   - Marcar una casilla (o varias: clic, Mays+clic, Ctrl+E) resalta ese tarugo (mas grande) y sus dos piezas en el 3D.
+   - Marcar una casilla (o varias: clic, Mays+clic para un rango, Ctrl+A para todos) resalta ese tarugo (mas grande) y sus dos piezas en el 3D.
    - **QUITAR MARCADOS / RESTAURAR MARCADOS**, **MARCAR TODOS / DESMARCAR TODOS / MARCAR ELIMINADOS**, **QUITAR / RESTAURAR UNION COMPLETA**,
      **ACEPTAR TODOS**. Un tarugo eliminado deja de dibujarse en el 3D. Las uniones dudosas empiezan desactivadas.
 4. **ACEPTAR Y MECANIZAR** pide confirmacion, hace copia de seguridad (carpeta `Respaldo_Tarugos_<fecha>` junto al archivo),
