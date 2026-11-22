@@ -259,7 +259,11 @@ Private Sub ActualizaResalte()
     ' al desmarcar se deselecciona ANTES de que DibujaTodo lo suelte.
     For j = 0 To NFlat - 1
         If Flat(j).Sel Then
-            If Flat(j).Aro Is Nothing Then Set Flat(j).Aro = CreaAro(Flat(j).U, Flat(j).K)
+            If Flat(j).Aro Is Nothing Then
+                Set Flat(j).Aro = CreaAro(Flat(j).U, Flat(j).K)
+                ' un cuerpo temporal solo se puede seleccionar una vez dibujado
+                If Not Flat(j).Aro Is Nothing Then Flat(j).Aro.Display3 compBase, ColorDe(j), swTempBodySelectable
+            End If
             If Not Flat(j).Aro Is Nothing Then
                 If Not aroSel(j) Then Flat(j).Aro.Select2 True, Nothing
             End If
