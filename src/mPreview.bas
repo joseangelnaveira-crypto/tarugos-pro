@@ -167,6 +167,11 @@ Public Sub DibujaTodo()
         If Flat(i).Sel Then
             If Flat(i).Aro Is Nothing Then Set Flat(i).Aro = CreaAro(Flat(i).U, Flat(i).K)
             If Not Flat(i).Aro Is Nothing Then Flat(i).Aro.Display3 compBase, ColorDe(i), swTempBodySelectable
+        ElseIf Not Flat(i).Aro Is Nothing Then
+            ' Al desmarcar hay que SOLTAR el aro: dejar de dibujarlo no basta, el cuerpo temporal
+            ' sigue en pantalla mientras el objeto exista (igual que con el cilindro grande, que
+            ' solo desaparece al sustituirlo por uno normal).
+            Set Flat(i).Aro = Nothing
         End If
         If Err.Number <> 0 Then
             errorDisplay = Err.Number & ": " & Err.Description
