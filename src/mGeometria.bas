@@ -115,7 +115,7 @@ Public Sub AnalizaPiezasDoc(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
     mOptim.TiempoPiezas = mOptim.Fin
 End Sub
 
-Private Sub AnalizaCuerpoDoc(bd As SldWorks.Body2, md As SldWorks.ModelDoc2, p As TPieza)
+Private Sub AnalizaCuerpoDoc(ByVal bd As SldWorks.Body2, md As SldWorks.ModelDoc2, p As TPieza)
     On Error GoTo errores
     Set p.Cuerpo = bd
     p.NombreCuerpo = bd.Name

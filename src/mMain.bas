@@ -259,9 +259,13 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
         End If
     End If
 
-    Dim asm As SldWorks.AssemblyDoc
-    Set asm = md
-    AnalizaPiezas swApp, asm
+    If md.GetType = swDocPART Then
+        AnalizaPiezasDoc swApp, md          ' pieza multicuerpo: cada cuerpo solido es una pieza
+    Else
+        Dim asm As SldWorks.AssemblyDoc
+        Set asm = md
+        AnalizaPiezas swApp, asm
+    End If
     If mOptim.Cancelado Then MsgBox "Analisis cancelado. No se ha modificado nada.", vbInformation, "Tarugos": Exit Sub
     DetectaUniones
     If mOptim.Cancelado Then MsgBox "Analisis cancelado. No se ha modificado nada.", vbInformation, "Tarugos": Exit Sub

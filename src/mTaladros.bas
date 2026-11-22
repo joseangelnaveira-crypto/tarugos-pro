@@ -416,6 +416,11 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
     Set pmd = app.GetOpenDocumentByName(path)
     If Not pmd Is Nothing Then ventanaPrevia = pmd.Visible
     Set pmd = Nothing
+    ' El documento ACTIVO nunca se cierra (pieza multicuerpo: es el propio documento analizado;
+    ' si se cerrara, el informe final y el resto de la macro trabajarian con un documento invalido)
+    Set pmd = app.ActiveDoc
+    If Not pmd Is Nothing Then If LCase(pmd.GetPathName) = LCase(path) Then ventanaPrevia = True
+    Set pmd = Nothing
     ' La pieza se abre Y SE ACTIVA (con ventana). El modo sin ventana (DocumentVisible False,
     ' sin ActivateDoc3) fallaba: SelectByID2 no devolvia la cara y InsertSketch no abria el
     ' croquis (0 de 118 taladros), porque SolidWorks necesita el documento activo para
@@ -635,7 +640,7 @@ End Function
 
 ' True si el cuerpo bd es la pieza p. En ensamblajes (Cuerpo = Nothing) vale cualquier cuerpo, como antes.
 ' Se compara la CAJA del cuerpo (SolidWorks renombra el cuerpo al cortarlo, el nombre no sirve).
-Private Function CuerpoEsPieza(bd As SldWorks.Body2, ByVal p As Long) As Boolean
+Private Function CuerpoEsPieza(ByVal bd As SldWorks.Body2, ByVal p As Long) As Boolean
     If Piezas(p).Cuerpo Is Nothing Then CuerpoEsPieza = True: Exit Function
     Dim bx As Variant
     bx = bd.GetBodyBox
@@ -794,10 +799,12 @@ Private Function CortaCiego(md As SldWorks.ModelDoc2, ByVal prof As Double, ByVa
             False, False, False, 0, 0, False, False)
     Else
         ' pieza multicuerpo: el corte se limita al cuerpo de la pieza (alcance de operacion):
-        ' el cuerpo se selecciona con la marca 1 y UseAutoSelect = False
+        ' el cuerpo se selecciona con la marca 8 y UseAutoSelect = False. Con la autoseleccion el
+        ' corte atravesaba tambien los otros cuerpos que hubiera detras (comprobado con una
+        ' pieza de prueba). Con otras marcas (0, 1, 2, 4) FeatureCut4 devuelve Nothing.
         Dim sd As SldWorks.SelectData
         Set sd = md.SelectionManager.CreateSelectData
-        sd.Mark = 1
+        sd.Mark = 8
         cuerpo.Select2 True, sd
         Set CortaCiego = md.FeatureManager.FeatureCut4(True, False, invierteSentido, 0, 0, prof, 0, _
             False, False, False, False, 0, 0, False, False, False, False, False, True, False, _
