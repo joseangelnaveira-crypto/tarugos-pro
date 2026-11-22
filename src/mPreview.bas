@@ -204,10 +204,24 @@ Public Sub Redibuja()
     ' poner ultimoDibujo = 0. Si se hacia despues, uno de esos repintados consumia el permiso de
     ' dibujar (minimo 0,3 s entre dibujados) y el repintado final no redibujaba los tarugos:
     ' quedaba el aro del tarugo anterior y no aparecia el nuevo hasta hacer clic en el dibujo.
-    ActualizaResalte
+    Dim cambio As Boolean
+    cambio = ActualizaResalte()
+    ' Si se ha cambiado la seleccion, SolidWorks tarda en terminar sus repintados (resalte de las
+    ' piezas) y cualquiera de ellos borra los cuerpos temporales. Se le deja medio segundo para
+    ' que termine (DoEvents atiende los mensajes pendientes) y SOLO ENTONCES se fuerza el
+    ' dibujado final, que asi es el ultimo.
+    If cambio Then EsperaSolidWorks 0.5
     ultimoDibujo = 0                       ' forzar el dibujado en el repintado que sigue
     permitidos = 3                         ' y en los 2 que pueden llegar despues (ver DibujaTodo)
     If Not mdlP Is Nothing Then mdlP.GraphicsRedraw2
+End Sub
+
+Private Sub EsperaSolidWorks(ByVal seg As Double)
+    Dim t As Double
+    t = Timer
+    Do While Abs(Timer - t) < seg
+        DoEvents
+    Loop
 End Sub
 
 ' Lista de nombres entre barras ("|a|b|"): anade n si no estaba
@@ -223,9 +237,9 @@ End Function
 ' usuario haya seleccionado con el raton siguen seleccionados) y al desmarcar se
 ' quitan SOLO las que puso la macro (resNombres). No modifica el ensamblaje.
 '------------------------------------------------------------------------------
-Private Sub ActualizaResalte()
-    If Not RESALTA_PIEZAS Then Exit Sub
-    If mdlP Is Nothing Then Exit Sub
+Private Function ActualizaResalte() As Boolean
+    If Not RESALTA_PIEZAS Then Exit Function
+    If mdlP Is Nothing Then Exit Function
     On Error Resume Next
     Dim i As Long, u As Long, deseadas As String
     For i = 0 To NFlat - 1
@@ -235,7 +249,7 @@ Private Sub ActualizaResalte()
             deseadas = AnadeNombre(deseadas, Piezas(Uniones(u).P2).Nombre)
         End If
     Next i
-    If deseadas = "" And resNombres = "" Then Exit Sub
+    If deseadas = "" And resNombres = "" Then Exit Function
 
     ' componentes seleccionados ahora mismo (por la macro o por el usuario)
     Dim sm As SldWorks.SelectionMgr, c As SldWorks.Component2, sel As String, n As Long
@@ -253,14 +267,14 @@ Private Sub ActualizaResalte()
     For p = 0 To NPiezas - 1
         nom = "|" & Piezas(p).Nombre & "|"
         If InStr(deseadas, nom) > 0 Then
-            If InStr(sel, nom) = 0 Then Piezas(p).Comp.Select2 True, 0
+            If InStr(sel, nom) = 0 Then Piezas(p).Comp.Select2 True, 0: ActualizaResalte = True
         ElseIf InStr(resNombres, nom) > 0 Then
-            If InStr(sel, nom) > 0 Then Piezas(p).Comp.DeSelect
+            If InStr(sel, nom) > 0 Then Piezas(p).Comp.DeSelect: ActualizaResalte = True
         End If
     Next p
     seleccionPropia = False
     resNombres = deseadas
-End Sub
+End Function
 
 Public Function ErrorDeDisplay() As String
     ErrorDeDisplay = errorDisplay
