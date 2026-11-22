@@ -17,6 +17,7 @@ Public Sub Fase6_Deshacer()
     Dim amd As SldWorks.ModelDoc2
     Set amd = app.ActiveDoc
     If amd Is Nothing Then Exit Sub
+    If amd.GetType = swDocPART Then DeshacerPieza app, amd: Exit Sub     ' pieza multicuerpo
     If amd.GetType <> swDocASSEMBLY Then MsgBox "Activa el ensamblaje.", vbExclamation, "Tarugos": Exit Sub
     Dim asm As SldWorks.AssemblyDoc
     Set asm = amd
@@ -126,6 +127,28 @@ Public Sub Fase6_Deshacer()
     Print #ff, inf
     Close #ff
     MsgBox "Operaciones eliminadas: " & borradas & " de " & total & vbCrLf & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 6"
+End Sub
+
+' Pieza (multicuerpo) activa: mismo proceso sobre su unico documento
+Private Sub DeshacerPieza(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
+    If md.GetPathName = "" Then MsgBox "Guarda la pieza antes de deshacer.", vbExclamation, "Tarugos": Exit Sub
+    If mGuardado.EsSoloLectura(md) Then MsgBox "La pieza es de solo lectura.", vbExclamation, "Tarugos": Exit Sub
+    Dim ex() As mDuplicados.TMeta, nex As Long
+    ex = mDuplicados.LeeExistentes(md, nex)
+    If nex = 0 Then MsgBox "No hay operaciones de la macro que deshacer.", vbInformation, "Tarugos": Exit Sub
+    If MsgBox("Se van a ELIMINAR " & nex & " operaciones creadas por la macro (con sus croquis) en:" & vbCrLf & vbCrLf & _
+              "  " & md.GetPathName & vbCrLf & vbCrLf & _
+              "No se tocan las demas operaciones. Antes se hace copia de seguridad." & vbCrLf & "¿Continuar?", _
+              vbYesNo + vbExclamation + vbDefaultButton2, "Tarugos - deshacer") <> vbYes Then Exit Sub
+    Dim carpeta As String, n As Long, er As Long
+    carpeta = mGuardado.CarpetaRespaldo(md)
+    If Not mGuardado.CopiaA(md, carpeta & "\" & Mid(md.GetPathName, InStrRev(md.GetPathName, "\") + 1)) Then
+        MsgBox "No se pudo hacer la copia de seguridad: no se elimina nada.", vbExclamation, "Tarugos": Exit Sub
+    End If
+    n = BorraOperaciones(md)
+    If n > 0 Then er = mGuardado.GuardaDoc(md)
+    MsgBox "Operaciones eliminadas: " & n & " de " & nex & IIf(er <> 0, vbCrLf & "AVISO: error al guardar (codigo " & er & ")", "") & _
+           vbCrLf & vbCrLf & "Copia de seguridad: " & carpeta, vbInformation, "Tarugos - Fase 6"
 End Sub
 
 ' Elimina de la pieza las operaciones con marca TARUGO_META. Devuelve cuantas.

@@ -80,6 +80,7 @@ Public Sub ConstruyePreview(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
     For ip = 0 To NPiezas - 1
         If Piezas(ip).Estado = "OK" Then
             If primero < 0 Then primero = ip
+            If Piezas(ip).Comp Is Nothing Then Exit For      ' pieza multicuerpo: no hay componente de referencia
             mpv = Empty
             On Error Resume Next
             mpv = Piezas(ip).Comp.MaterialPropertyValues
@@ -239,13 +240,19 @@ Private Sub ActualizaResalte()
     If deseadas = "" And resNombres = "" Then Exit Sub
 
     ' componentes seleccionados ahora mismo (por la macro o por el usuario)
-    Dim sm As SldWorks.SelectionMgr, c As SldWorks.Component2, sel As String, n As Long
+    Dim sm As SldWorks.SelectionMgr, c As SldWorks.Component2, sel As String, n As Long, cuerpoSel As SldWorks.Body2
     Set sm = mdlP.SelectionManager
     n = sm.GetSelectedObjectCount2(-1)
     For i = 1 To n
         If sm.GetSelectedObjectType3(i, -1) = swSelCOMPONENTS Then
             Set c = sm.GetSelectedObject6(i, -1)
             If Not c Is Nothing Then sel = AnadeNombre(sel, c.Name2)
+        ElseIf sm.GetSelectedObjectType3(i, -1) = swSelSOLIDBODIES Then
+            ' cuerpos REALES seleccionados (pieza multicuerpo); los temporales (tarugos) no cuentan
+            Set cuerpoSel = sm.GetSelectedObject6(i, -1)
+            If Not cuerpoSel Is Nothing Then
+                If Not cuerpoSel.IsTemporaryBody Then sel = AnadeNombre(sel, cuerpoSel.Name)
+            End If
         End If
     Next i
 
@@ -253,7 +260,14 @@ Private Sub ActualizaResalte()
     Dim p As Long, nom As String
     For p = 0 To NPiezas - 1
         nom = "|" & Piezas(p).Nombre & "|"
-        If InStr(deseadas, nom) > 0 Then
+        If Piezas(p).Comp Is Nothing Then
+            ' pieza multicuerpo: la pieza es un CUERPO real (no un componente)
+            If InStr(deseadas, nom) > 0 Then
+                If InStr(sel, nom) = 0 Then Piezas(p).Cuerpo.Select2 True, Nothing
+            ElseIf InStr(resNombres, nom) > 0 Then
+                If InStr(sel, nom) > 0 Then Piezas(p).Cuerpo.DeSelect
+            End If
+        ElseIf InStr(deseadas, nom) > 0 Then
             If InStr(sel, nom) = 0 Then Piezas(p).Comp.Select2 True, 0
         ElseIf InStr(resNombres, nom) > 0 Then
             If InStr(sel, nom) > 0 Then Piezas(p).Comp.DeSelect

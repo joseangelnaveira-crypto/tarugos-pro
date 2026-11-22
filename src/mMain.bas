@@ -24,9 +24,13 @@ Public Sub Fase2_Analizar()
     Dim t0 As Double
     t0 = Timer
 
-    Dim asm As SldWorks.AssemblyDoc
-    Set asm = md
-    AnalizaPiezas swApp, asm
+    If md.GetType = swDocPART Then
+        AnalizaPiezasDoc swApp, md          ' pieza multicuerpo: cada cuerpo solido es una pieza
+    Else
+        Dim asm As SldWorks.AssemblyDoc
+        Set asm = md
+        AnalizaPiezas swApp, asm
+    End If
     If mOptim.Cancelado Then MsgBox "Analisis cancelado. No se ha modificado nada.", vbInformation, "Tarugos": Exit Sub
     DetectaUniones
     If mOptim.Cancelado Then MsgBox "Analisis cancelado. No se ha modificado nada.", vbInformation, "Tarugos": Exit Sub
@@ -210,7 +214,10 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
     Dim md As SldWorks.ModelDoc2
     Set md = swApp.ActiveDoc
     If md Is Nothing Then MsgBox "Abre un ensamblaje.", vbExclamation, "Tarugos": Exit Sub
-    If md.GetType <> swDocASSEMBLY Then MsgBox "El documento activo debe ser un ensamblaje.", vbExclamation, "Tarugos": Exit Sub
+    If md.GetType <> swDocASSEMBLY And md.GetType <> swDocPART Then MsgBox "El documento activo debe ser un ensamblaje o una pieza multicuerpo.", vbExclamation, "Tarugos": Exit Sub
+    If md.GetType = swDocPART Then
+        If NCuerposSolidos(md) < 2 Then MsgBox "La pieza activa tiene un solo cuerpo solido: abre un ensamblaje o una pieza multicuerpo.", vbExclamation, "Tarugos": Exit Sub
+    End If
 
     ' si ya hay una revision abierta, se cierra
     mPreview.Limpia
@@ -227,7 +234,16 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
         n = sm.GetSelectedObjectCount2(-1)
         For i = 1 To n
             Set c = Nothing
-            If sm.GetSelectedObjectType3(i, -1) = swSelCOMPONENTS Then
+            If md.GetType = swDocPART Then
+                ' pieza multicuerpo: se seleccionan CUERPOS (en el arbol o pinchando en el modelo)
+                If sm.GetSelectedObjectType3(i, -1) = swSelSOLIDBODIES Then
+                    Dim cuerpoSel As SldWorks.Body2
+                    Set cuerpoSel = sm.GetSelectedObject6(i, -1)
+                    If Not cuerpoSel Is Nothing Then
+                        If Not YaEsta(nombres, cuerpoSel.Name) Then nombres.Add cuerpoSel.Name
+                    End If
+                End If
+            ElseIf sm.GetSelectedObjectType3(i, -1) = swSelCOMPONENTS Then
                 Set c = sm.GetSelectedObject6(i, -1)
             Else
                 Set c = sm.GetSelectedObjectsComponent4(i, -1)
@@ -285,13 +301,21 @@ Public Sub Tarugos_Principal()
     Dim swApp As SldWorks.SldWorks
     Set swApp = Application.SldWorks
     If swApp.ActiveDoc Is Nothing Then MsgBox "Abre un ensamblaje.", vbExclamation, "Tarugos": Exit Sub
-    If swApp.ActiveDoc.GetType <> swDocASSEMBLY Then MsgBox "El documento activo debe ser un ensamblaje.", vbExclamation, "Tarugos": Exit Sub
+    If swApp.ActiveDoc.GetType <> swDocASSEMBLY And swApp.ActiveDoc.GetType <> swDocPART Then MsgBox "El documento activo debe ser un ensamblaje o una pieza multicuerpo.", vbExclamation, "Tarugos": Exit Sub
     CfgPorDefecto
     ' Ventana NO modal: asi se puede seleccionar piezas con el raton mientras esta abierta.
     ' Los botones llaman directamente a Fase3_Revisar / Fase6_Deshacer.
     frmPrincipal.Reinicia
     frmPrincipal.Show vbModeless
 End Sub
+
+' Numero de cuerpos solidos visibles de una pieza
+Private Function NCuerposSolidos(md As SldWorks.ModelDoc2) As Long
+    Dim pd As SldWorks.PartDoc, b As Variant
+    Set pd = md
+    b = pd.GetBodies2(swSolidBody, True)
+    If Not IsEmpty(b) Then NCuerposSolidos = UBound(b) + 1
+End Function
 
 Private Function YaEsta(c As Collection, ByVal s As String) As Boolean
     Dim v As Variant

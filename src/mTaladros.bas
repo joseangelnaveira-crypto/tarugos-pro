@@ -43,6 +43,7 @@ Public Sub Mecaniza()
     Dim amd As SldWorks.ModelDoc2
     Set amd = app.ActiveDoc
     If amd Is Nothing Then Exit Sub
+    If amd.GetType = swDocPART Then MecanizaPieza app, amd: Exit Sub     ' pieza multicuerpo
     If amd.GetType <> swDocASSEMBLY Then MsgBox "Activa el ensamblaje.", vbExclamation, "Tarugos": Exit Sub
     ' El ensamblaje activo debe ser el que se analizo en la revision: la ventana de revision
     ' no es modal y, si se cambio de documento, Piezas()/Uniones() son de otro ensamblaje
@@ -58,24 +59,7 @@ Public Sub Mecaniza()
     Dim carpeta As String, hechos As Long, nSustituidas As Long, nRepetidos As Long
     On Error GoTo errores
 
-    ' ---- tareas: un taladro por tarugo y pieza. Activo = crear (si no existe);
-    '      descartado = ELIMINAR el taladro si ya existia (lo hizo esta macro) ----
-    NJobs = 0
-    Dim u As Long, k As Long, j As TJob
-    For u = 0 To NUniones - 1
-        For k = 0 To Uniones(u).NT - 1
-            j.U = u: j.K = k: j.Pc = Uniones(u).Pos(k)
-            j.Borrar = Not Uniones(u).Activo(k)
-            ' pieza 1: cara con normal N1, profundidad Prof1
-            j.Pieza = Uniones(u).P1: j.Nout = Uniones(u).N1: j.Prof = Cfg.Prof1 * MM
-            AnadeJob j
-            ' pieza 2: cara con normal -N1, profundidad Prof2
-            j.Pieza = Uniones(u).P2
-            j.Nout = V3(-Uniones(u).N1.X, -Uniones(u).N1.Y, -Uniones(u).N1.Z)
-            j.Prof = Cfg.Prof2 * MM
-            AnadeJob j
-        Next k
-    Next u
+    CreaJobs
     If NJobs = 0 Then MsgBox "No hay tarugos que mecanizar.", vbInformation, "Tarugos": Exit Sub
 
     ' ---- piezas afectadas ----
@@ -280,6 +264,90 @@ errores:
            "Informe: " & ruta, vbCritical, "Tarugos - Fase 5"
 End Sub
 
+' Tareas: un taladro por tarugo y pieza. Activo = crear (si no existe);
+' descartado = ELIMINAR el taladro si ya existia (lo hizo esta macro)
+Private Sub CreaJobs()
+    NJobs = 0
+    Dim u As Long, k As Long, j As TJob
+    For u = 0 To NUniones - 1
+        For k = 0 To Uniones(u).NT - 1
+            j.U = u: j.K = k: j.Pc = Uniones(u).Pos(k)
+            j.Borrar = Not Uniones(u).Activo(k)
+            ' pieza 1: cara con normal N1, profundidad Prof1
+            j.Pieza = Uniones(u).P1: j.Nout = Uniones(u).N1: j.Prof = Cfg.Prof1 * MM
+            AnadeJob j
+            ' pieza 2: cara con normal -N1, profundidad Prof2
+            j.Pieza = Uniones(u).P2
+            j.Nout = V3(-Uniones(u).N1.X, -Uniones(u).N1.Y, -Uniones(u).N1.Z)
+            j.Prof = Cfg.Prof2 * MM
+            AnadeJob j
+        Next k
+    Next u
+End Sub
+
+' ---------------------------------------------------------------------------
+' PIEZA MULTICUERPO: cada cuerpo solido es una pieza y todos los taladros van en el MISMO
+' archivo (cada corte se limita a su cuerpo). Mismo flujo que el ensamblaje, sin piezas
+' repetidas ni copias independientes.
+' ---------------------------------------------------------------------------
+Private Sub MecanizaPieza(app As SldWorks.SldWorks, amd As SldWorks.ModelDoc2)
+    If amd.GetPathName & "|" & amd.GetTitle <> mMain.AsmAnalizado Then
+        MsgBox "El documento activo no es la pieza que se analizo en la revision." & vbCrLf & _
+               "Activala de nuevo y repite el analisis.", vbExclamation, "Tarugos"
+        Exit Sub
+    End If
+    If amd.GetPathName = "" Then MsgBox "Guarda la pieza antes de mecanizar.", vbExclamation, "Tarugos": Exit Sub
+    If mGuardado.EsSoloLectura(amd) Then MsgBox "La pieza es de solo lectura (sin extraer / protegida).", vbExclamation, "Tarugos": Exit Sub
+    inf = ""
+    Dim carpeta As String, hechos As Long
+    On Error GoTo errores
+
+    CreaJobs
+    If NJobs = 0 Then MsgBox "No hay tarugos que mecanizar.", vbInformation, "Tarugos": Exit Sub
+
+    ' piezas (cuerpos) afectadas = miembros del unico documento
+    Dim nPz As Long, lista() As Long, i As Long
+    ReDim lista(0 To NJobs)
+    For i = 0 To NJobs - 1
+        If Not EnLista(lista, nPz, Jobs(i).Pieza) Then lista(nPz) = Jobs(i).Pieza: nPz = nPz + 1
+    Next i
+
+    Dim cerca As String
+    cerca = TaladrosCercanos()
+    If cerca <> "" Then Anota cerca
+    If MsgBox("Se va a MODIFICAR esta pieza (todos los taladros en el mismo archivo):" & vbCrLf & vbCrLf & _
+              "  " & amd.GetPathName & "  (" & NJobs & " taladros en " & nPz & " cuerpos)" & vbCrLf & vbCrLf & _
+              IIf(cerca <> "", cerca & vbCrLf, "") & _
+              "Diametro " & Cfg.Diametro & " mm. Antes se hara una copia de seguridad de la pieza." & vbCrLf & _
+              "Los taladros que ya existan no se duplican. Los tarugos DESCARTADOS que ya estuvieran taladrados se ELIMINAN." & vbCrLf & "¿Continuar?", _
+              vbYesNo + vbExclamation + vbDefaultButton2, "Tarugos - mecanizado") <> vbYes Then
+        Exit Sub
+    End If
+
+    carpeta = mGuardado.CarpetaRespaldo(amd)
+    If Not mGuardado.CopiaA(amd, carpeta & "\" & Mid(amd.GetPathName, InStrRev(amd.GetPathName, "\") + 1)) Then
+        Anota "ERROR no se pudo hacer la copia de seguridad: no se mecaniza"
+    Else
+        Anota "Copia de seguridad en: " & carpeta
+        nSaltados = 0: nBorrados = 0
+        hechos = MecanizaDoc(app, amd.GetPathName, lista, nPz)
+    End If
+
+    Dim ruta As String
+    ruta = EscribeInformeFinal(carpeta, amd, hechos)
+    MsgBox "Taladros creados: " & hechos & " de " & NJobs & vbCrLf & "Ya existentes (no repetidos): " & nSaltados & vbCrLf & "Eliminados (descartados): " & nBorrados & vbCrLf & _
+           vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
+    Exit Sub
+
+errores:
+    Dim txtErr As String
+    txtErr = Err.Number & " - " & Err.Description
+    Anota "ERROR INESPERADO: " & txtErr
+    On Error Resume Next
+    ruta = EscribeInformeFinal(carpeta, amd, hechos)
+    MsgBox "Error inesperado durante el mecanizado: " & txtErr & vbCrLf & vbCrLf & "Informe: " & ruta, vbCritical, "Tarugos - Fase 5"
+End Sub
+
 ' Escribe Informe_Fase5.txt y el CSV. Si el error ocurrio antes de crear la carpeta de
 ' respaldo, se usa la carpeta del ensamblaje. Devuelve la ruta del informe.
 Private Function EscribeInformeFinal(ByVal carpeta As String, amd As SldWorks.ModelDoc2, ByVal hechos As Long) As String
@@ -369,11 +437,17 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
     hayAviso = False
     Anota "   existentes en " & act.GetTitle & ":" & vbCrLf & mDuplicados.Diag(act)
     For m = 0 To nm - 1
-        Set inv = Piezas(miembros(m)).Comp.GetTotalTransform(False).Inverse
+        ' pieza multicuerpo (Comp = Nothing): las coordenadas del documento ya son las de la pieza
+        If Piezas(miembros(m)).Comp Is Nothing Then Set inv = Nothing Else Set inv = Piezas(miembros(m)).Comp.GetTotalTransform(False).Inverse
         For a = 0 To NJobs - 1
             If Jobs(a).Pieza = miembros(m) Then
-                pp = TrP(inv, Jobs(a).Pc)
-                nn = VUnit(TrV(inv, Jobs(a).Nout))
+                If inv Is Nothing Then
+                    pp = Jobs(a).Pc
+                    nn = VUnit(Jobs(a).Nout)
+                Else
+                    pp = TrP(inv, Jobs(a).Pc)
+                    nn = VUnit(TrV(inv, Jobs(a).Nout))
+                End If
                 profmm = Jobs(a).Prof / MM
                 ex = mDuplicados.LeeExistentes(act, nex)
                 If Jobs(a).Borrar Then
@@ -396,7 +470,7 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
                     nSaltados = nSaltados + 1
                     Anota "AVISO " & Jobs(a).Nombre & ": ya hay un taladro de la macro en ese punto con otro diametro/profundidad; no se modifica"
                 Else
-                    Set f = BuscaCara(act, pp, nn)
+                    Set f = BuscaCara(act, pp, nn, Jobs(a).Pieza)
                     If f Is Nothing Then
                         Anota "ERROR " & Jobs(a).Nombre & ": no se encontro la cara de contacto en la pieza"
                     ElseIf CreaTaladro(act, f, pp, nn, Jobs(a)) Then
@@ -522,7 +596,7 @@ Private Function EnLista(l() As Long, ByVal n As Long, ByVal v As Long) As Boole
 End Function
 
 ' Cara plana de la pieza (espacio de la pieza) con normal nn que contiene el punto pp
-Private Function BuscaCara(pmd As SldWorks.ModelDoc2, pp As TV3, nn As TV3) As SldWorks.Face2
+Private Function BuscaCara(pmd As SldWorks.ModelDoc2, pp As TV3, nn As TV3, ByVal pieza As Long) As SldWorks.Face2
     Dim bodies As Variant
     bodies = CType2(pmd).GetBodies2(swSolidBody, False)
     If IsEmpty(bodies) Then Exit Function
@@ -530,6 +604,9 @@ Private Function BuscaCara(pmd As SldWorks.ModelDoc2, pp As TV3, nn As TV3) As S
     Dim s As SldWorks.Surface, nf As TV3, pf As TV3, v As Variant, bx As Variant
     For b = 0 To UBound(bodies)
         Set bd = bodies(b)
+        ' pieza multicuerpo: solo las caras del cuerpo que ES la pieza (dos cuerpos pueden tener
+        ' caras coincidentes en el mismo plano)
+        If Not CuerpoEsPieza(bd, pieza) Then GoTo siguienteCuerpo
         Set f = bd.GetFirstFace
         Do While Not f Is Nothing
             Set s = f.GetSurface
@@ -552,6 +629,30 @@ Private Function BuscaCara(pmd As SldWorks.ModelDoc2, pp As TV3, nn As TV3) As S
             End If
             Set f = f.GetNextFace
         Loop
+siguienteCuerpo:
+    Next b
+End Function
+
+' True si el cuerpo bd es la pieza p. En ensamblajes (Cuerpo = Nothing) vale cualquier cuerpo, como antes.
+' Se compara la CAJA del cuerpo (SolidWorks renombra el cuerpo al cortarlo, el nombre no sirve).
+Private Function CuerpoEsPieza(bd As SldWorks.Body2, ByVal p As Long) As Boolean
+    If Piezas(p).Cuerpo Is Nothing Then CuerpoEsPieza = True: Exit Function
+    Dim bx As Variant
+    bx = bd.GetBodyBox
+    If IsEmpty(bx) Then Exit Function
+    CuerpoEsPieza = (Abs(bx(0) - Piezas(p).BMin.X) < 0.0005 And Abs(bx(1) - Piezas(p).BMin.Y) < 0.0005 And _
+                     Abs(bx(2) - Piezas(p).BMin.Z) < 0.0005 And Abs(bx(3) - Piezas(p).BMax.X) < 0.0005 And _
+                     Abs(bx(4) - Piezas(p).BMax.Y) < 0.0005 And Abs(bx(5) - Piezas(p).BMax.Z) < 0.0005)
+End Function
+
+' El cuerpo real (en el documento md, tal como esta ahora) que corresponde a la pieza p, o Nothing
+Private Function CuerpoDePieza(md As SldWorks.ModelDoc2, ByVal p As Long) As SldWorks.Body2
+    If Piezas(p).Cuerpo Is Nothing Then Exit Function
+    Dim bodies As Variant, b As Long
+    bodies = CType2(md).GetBodies2(swSolidBody, False)
+    If IsEmpty(bodies) Then Exit Function
+    For b = 0 To UBound(bodies)
+        If CuerpoEsPieza(bodies(b), p) Then Set CuerpoDePieza = bodies(b): Exit Function
     Next b
 End Function
 
@@ -634,8 +735,10 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     Dim feat As SldWorks.Feature
     ' OJO: el parametro "Flip" de FeatureCut4 significa "cortar por FUERA del perfil".
     ' Para invertir el sentido del corte se usa "Dir".
-    Set feat = CortaCiego(md, jb.Prof, False)
-    If feat Is Nothing Then Set feat = CortaCiego(md, jb.Prof, True)      ' sentido contrario
+    Dim cuerpoPieza As SldWorks.Body2
+    Set cuerpoPieza = CuerpoDePieza(md, jb.Pieza)          ' Nothing salvo en piezas multicuerpo
+    Set feat = CortaCiego(md, jb.Prof, False, cuerpoPieza)
+    If feat Is Nothing Then Set feat = CortaCiego(md, jb.Prof, True, cuerpoPieza)      ' sentido contrario
     If feat Is Nothing Then
         Anota "ERROR " & jb.Nombre & ": el corte-extruido fallo (circulo en croquis: " & Format(ps.X * 1000, "0.0") & " ; " & _
               Format(ps.Y * 1000, "0.0") & " ; " & Format(ps.Z * 1000, "0.0") & " mm)"
@@ -674,7 +777,7 @@ Private Sub BorraUltimoCroquis(md As SldWorks.ModelDoc2)
     md.ClearSelection2 True
 End Sub
 
-Private Function CortaCiego(md As SldWorks.ModelDoc2, ByVal prof As Double, ByVal invierteSentido As Boolean) As SldWorks.Feature
+Private Function CortaCiego(md As SldWorks.ModelDoc2, ByVal prof As Double, ByVal invierteSentido As Boolean, Optional cuerpo As SldWorks.Body2 = Nothing) As SldWorks.Feature
     Dim ft As SldWorks.Feature, sf As SldWorks.Feature
     Set ft = md.FirstFeature
     Do While Not ft Is Nothing
@@ -684,9 +787,22 @@ Private Function CortaCiego(md As SldWorks.ModelDoc2, ByVal prof As Double, ByVa
     If sf Is Nothing Then Exit Function
     md.ClearSelection2 True
     sf.Select2 False, 0
-    Set CortaCiego = md.FeatureManager.FeatureCut4(True, False, invierteSentido, 0, 0, prof, 0, _
-        False, False, False, False, 0, 0, False, False, False, False, False, True, True, _
-        False, False, False, 0, 0, False, False)
+    If cuerpo Is Nothing Then
+        ' ensamblaje / pieza de un solo cuerpo: como siempre (autoseleccion de cuerpos)
+        Set CortaCiego = md.FeatureManager.FeatureCut4(True, False, invierteSentido, 0, 0, prof, 0, _
+            False, False, False, False, 0, 0, False, False, False, False, False, True, True, _
+            False, False, False, 0, 0, False, False)
+    Else
+        ' pieza multicuerpo: el corte se limita al cuerpo de la pieza (alcance de operacion):
+        ' el cuerpo se selecciona con la marca 1 y UseAutoSelect = False
+        Dim sd As SldWorks.SelectData
+        Set sd = md.SelectionManager.CreateSelectData
+        sd.Mark = 1
+        cuerpo.Select2 True, sd
+        Set CortaCiego = md.FeatureManager.FeatureCut4(True, False, invierteSentido, 0, 0, prof, 0, _
+            False, False, False, False, 0, 0, False, False, False, False, False, True, False, _
+            False, False, False, 0, 0, False, False)
+    End If
 End Function
 
 ' DIAGNOSTICO TEMPORAL (quitar cuando se resuelva): estado cuando InsertSketch no abre croquis

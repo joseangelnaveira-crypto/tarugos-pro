@@ -16,15 +16,17 @@ Option Explicit
 
 Private WithEvents mv As SldWorks.ModelView
 Private WithEvents ad As SldWorks.AssemblyDoc
+Private WithEvents pd As SldWorks.PartDoc            ' pieza multicuerpo (en vez de ensamblaje)
 
 Public Sub Conecta(md As SldWorks.ModelDoc2)
-    Set ad = md
+    If md.GetType = swDocPART Then Set pd = md Else Set ad = md
     Set mv = md.GetFirstModelView
 End Sub
 
 Public Sub Desconecta()
     Set mv = Nothing
     Set ad = Nothing
+    Set pd = Nothing
 End Sub
 
 Private Function mv_RepaintPostNotify() As Long
@@ -35,4 +37,9 @@ End Function
 Private Function ad_UserSelectionPostNotify() As Long
     mPreview.SincronizaSeleccion
     ad_UserSelectionPostNotify = 0
+End Function
+
+Private Function pd_UserSelectionPostNotify() As Long
+    mPreview.SincronizaSeleccion
+    pd_UserSelectionPostNotify = 0
 End Function

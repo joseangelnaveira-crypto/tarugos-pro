@@ -42,6 +42,9 @@ Public Type TPieza
     Aviso As String
     EnEns As Boolean
     TrDatos As String
+    Cuerpo As SldWorks.Body2     ' solo en piezas MULTICUERPO: el cuerpo solido que ES la pieza (Comp = Nothing)
+    NombreCuerpo As String       ' nombre del cuerpo al analizar ("" en ensamblajes). OJO: SolidWorks lo
+                                 ' renombra al cortarlo; para localizarlo despues se usa su CAJA, no el nombre
 End Type
 
 Public Piezas() As TPieza
@@ -81,6 +84,67 @@ Public Sub AnalizaPiezas(app As SldWorks.SldWorks, asm As SldWorks.AssemblyDoc, 
         NPiezas = NPiezas + 1
     Next i
     mOptim.TiempoPiezas = mOptim.Fin
+End Sub
+
+'------------------------------------------------------------------------------
+' Pieza MULTICUERPO abierta (no es un ensamblaje): cada cuerpo solido visible es una
+' "pieza". Las coordenadas del documento ya son las del "ensamblaje" (transformacion
+' identidad, caso que AnalizaComponente ya contempla). Comp = Nothing.
+'------------------------------------------------------------------------------
+Public Sub AnalizaPiezasDoc(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
+    Set swApp = app
+    Set mu = swApp.GetMathUtility
+    Set Keep = New Collection
+    NPiezas = 0
+    Ligeras = 0
+    Erase Piezas
+
+    Dim pd As SldWorks.PartDoc
+    Set pd = md
+    Dim bodies As Variant
+    bodies = pd.GetBodies2(swSolidBody, True)
+    If IsEmpty(bodies) Then Exit Sub
+    Dim i As Long
+    ReDim Piezas(0 To UBound(bodies))
+    mOptim.Inicia app, "Tarugos: analizando cuerpos", UBound(bodies) + 1
+    For i = 0 To UBound(bodies)
+        If mOptim.Paso(i) Then Exit For
+        AnalizaCuerpoDoc bodies(i), md, Piezas(NPiezas)
+        NPiezas = NPiezas + 1
+    Next i
+    mOptim.TiempoPiezas = mOptim.Fin
+End Sub
+
+Private Sub AnalizaCuerpoDoc(bd As SldWorks.Body2, md As SldWorks.ModelDoc2, p As TPieza)
+    On Error GoTo errores
+    Set p.Cuerpo = bd
+    p.NombreCuerpo = bd.Name
+    p.Nombre = bd.Name
+    p.Ruta = md.GetPathName
+    p.Config = md.ConfigurationManager.ActiveConfiguration.Name
+    p.Estado = "OK"
+    p.iCaraA = -1: p.iCaraB = -1
+
+    Dim cb As Variant
+    cb = bd.GetBodyBox
+    If IsEmpty(cb) Then p.Estado = "SIN GEOMETRIA": p.Aviso = "GetBodyBox vacio": Exit Sub
+    p.BMin = V3(cb(0), cb(1), cb(2))
+    p.BMax = V3(cb(3), cb(4), cb(5))
+    p.EnEns = True
+    Keep.Add bd
+
+    Dim f As SldWorks.Face2, tr As SldWorks.MathTransform
+    Set f = bd.GetFirstFace
+    Do While Not f Is Nothing
+        AnadeCara f, tr, True, p            ' enEns = True: tr no se usa
+        Set f = f.GetNextFace
+    Loop
+    If p.NCaras = 0 Then p.Estado = "SIN GEOMETRIA": p.Aviso = "Ninguna cara plana valida": Exit Sub
+    ClasificaTablero p, tr, True
+    Exit Sub
+errores:
+    p.Estado = "ERROR"
+    p.Aviso = "Err " & Err.Number & ": " & Err.Description
 End Sub
 
 Private Sub AnalizaComponente(c As SldWorks.Component2, p As TPieza)
