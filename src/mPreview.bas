@@ -51,6 +51,7 @@ Public Llamadas As Long                     ' numero de repintados atendidos (di
 Private Const RESALTA_PIEZAS As Boolean = True
 Private resNombres As String                ' piezas resaltadas ahora, entre barras: |Balda-1|Costado_IZQ-1|
 Private seleccionPropia As Boolean          ' la macro esta cambiando la seleccion (SincronizaSeleccion lo ignora)
+Private permitidos As Long                  ' dibujados que DibujaTodo concede sin esperar los 0,3 s (los pone Redibuja)
 
 Private Function RGBl(ByVal r As Long, ByVal g As Long, ByVal b As Long) As Long
     RGBl = r + g * 256 + b * 65536
@@ -156,9 +157,16 @@ End Function
 ' Sin proteccion se produce un bucle infinito que congela SolidWorks (ocurrio en
 ' las pruebas). Se evita con (1) un indicador de reentrada y (2) un minimo de
 ' tiempo entre dibujados.
+' Excepcion: tras cambiar la seleccion (Redibuja) llegan repintados PROPIOS de SolidWorks
+' (resalte de las piezas) despues del dibujado forzado; borran los cuerpos temporales y, con
+' el minimo de 0,3 s, no se redibujaban (los tarugos desaparecian hasta el siguiente
+' repintado). Por eso Redibuja concede unos pocos dibujados sin esperar (permitidos); son
+' pocos y acotados, asi que no puede volver el bucle infinito.
 Public Sub DibujaTodo()
     If dibujando Then Exit Sub
-    If ultimoDibujo <> 0 Then
+    If permitidos > 0 Then
+        permitidos = permitidos - 1
+    ElseIf ultimoDibujo <> 0 Then
         If Abs(Timer - ultimoDibujo) < 0.3 Then Exit Sub
     End If
     dibujando = True
@@ -198,6 +206,7 @@ Public Sub Redibuja()
     ' quedaba el aro del tarugo anterior y no aparecia el nuevo hasta hacer clic en el dibujo.
     ActualizaResalte
     ultimoDibujo = 0                       ' forzar el dibujado en el repintado que sigue
+    permitidos = 3                         ' y en los 2 que pueden llegar despues (ver DibujaTodo)
     If Not mdlP Is Nothing Then mdlP.GraphicsRedraw2
 End Sub
 
