@@ -1,5 +1,6 @@
 Attribute VB_Name = "mPoligono"
 Option Explicit
+Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
 '==============================================================================
 ' mPoligono - Geometria 2D minima: casco convexo, area, interseccion de
 ' poligonos convexos (Sutherland-Hodgman). Sin llamadas a SolidWorks.

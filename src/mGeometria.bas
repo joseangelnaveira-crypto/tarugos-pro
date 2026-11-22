@@ -1,5 +1,6 @@
 Attribute VB_Name = "mGeometria"
 Option Explicit
+Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
 '==============================================================================
 ' mGeometria - FASE 1: reconocimiento de piezas y geometria del ensamblaje.
 '
@@ -49,7 +50,6 @@ End Type
 
 Public Piezas() As TPieza
 Public NPiezas As Long
-Public Ligeras As Long       ' componentes ligeros que no se han podido analizar
 
 Private mu As SldWorks.MathUtility
 ' Mantiene vivos los cuerpos (y por tanto las caras guardadas en TCara.Ref).
@@ -67,7 +67,6 @@ Public Sub AnalizaPiezas(app As SldWorks.SldWorks, asm As SldWorks.AssemblyDoc, 
     Set mu = swApp.GetMathUtility
     Set Keep = New Collection
     NPiezas = 0
-    Ligeras = 0
     Erase Piezas
 
     Dim comps As Variant
@@ -83,7 +82,7 @@ Public Sub AnalizaPiezas(app As SldWorks.SldWorks, asm As SldWorks.AssemblyDoc, 
         AnalizaComponente c, Piezas(NPiezas)
         NPiezas = NPiezas + 1
     Next i
-    mOptim.TiempoPiezas = mOptim.Fin
+    mOptim.Fin
 End Sub
 
 '------------------------------------------------------------------------------
@@ -96,7 +95,6 @@ Public Sub AnalizaPiezasDoc(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
     Set mu = swApp.GetMathUtility
     Set Keep = New Collection
     NPiezas = 0
-    Ligeras = 0
     Erase Piezas
 
     Dim pd As SldWorks.PartDoc
@@ -112,7 +110,7 @@ Public Sub AnalizaPiezasDoc(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
         AnalizaCuerpoDoc bodies(i), md, Piezas(NPiezas)
         NPiezas = NPiezas + 1
     Next i
-    mOptim.TiempoPiezas = mOptim.Fin
+    mOptim.Fin
 End Sub
 
 Private Sub AnalizaCuerpoDoc(ByVal bd As SldWorks.Body2, md As SldWorks.ModelDoc2, p As TPieza)
@@ -164,7 +162,6 @@ Private Sub AnalizaComponente(c As SldWorks.Component2, p As TPieza)
     sup = c.GetSuppression
     If sup = swComponentLightweight Or sup = swComponentFullyLightweight Then
         p.Estado = "LIGERA"
-        Ligeras = Ligeras + 1
         Exit Sub
     End If
 
@@ -232,41 +229,6 @@ errores:
     p.Estado = "ERROR"
     p.Aviso = "Err " & Err.Number & ": " & Err.Description
 End Sub
-
-'------------------------------------------------------------------------------
-' Decide si las coordenadas de los cuerpos devueltos por GetBodies3 ya estan en
-' el espacio del ensamblaje o en el de la pieza. Se compara la caja del cuerpo
-' (tal cual y transformada) con la caja del componente.
-'------------------------------------------------------------------------------
-Private Function CuerpoEnEnsamblaje(body As SldWorks.Body2, cb As Variant, _
-                                    tr As SldWorks.MathTransform) As Boolean
-    Dim bb As Variant
-    bb = body.GetBodyBox
-    If IsEmpty(bb) Then CuerpoEnEnsamblaje = True: Exit Function
-
-    Dim d1 As Double, k As Long
-    For k = 0 To 5
-        d1 = d1 + Abs(CDbl(bb(k)) - CDbl(cb(k)))
-    Next k
-
-    ' caja transformada (AABB de las 8 esquinas)
-    Dim mn As TV3, mx As TV3, i As Long, q As TV3, t As TV3, first As Boolean
-    first = True
-    For i = 0 To 7
-        q = V3(IIf(i And 1, bb(3), bb(0)), IIf(i And 2, bb(4), bb(1)), IIf(i And 4, bb(5), bb(2)))
-        t = TrP(tr, q)
-        If first Then
-            mn = t: mx = t: first = False
-        Else
-            mn = V3(MinD(mn.X, t.X), MinD(mn.Y, t.Y), MinD(mn.Z, t.Z))
-            mx = V3(MaxD(mx.X, t.X), MaxD(mx.Y, t.Y), MaxD(mx.Z, t.Z))
-        End If
-    Next i
-    Dim d2 As Double
-    d2 = Abs(mn.X - cb(0)) + Abs(mn.Y - cb(1)) + Abs(mn.Z - cb(2)) + _
-         Abs(mx.X - cb(3)) + Abs(mx.Y - cb(4)) + Abs(mx.Z - cb(5))
-    CuerpoEnEnsamblaje = (d1 <= d2)
-End Function
 
 '------------------------------------------------------------------------------
 ' Anade una cara plana (si cumple el area minima) a la pieza, en coord. ensamblaje

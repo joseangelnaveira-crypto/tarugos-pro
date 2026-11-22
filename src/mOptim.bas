@@ -1,7 +1,8 @@
 Attribute VB_Name = "mOptim"
 Option Explicit
+Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
 '==============================================================================
-' mOptim - FASE 7: progreso, cancelacion y medida de tiempos del analisis.
+' mOptim - FASE 7: barra de progreso y cancelacion del analisis.
 '
 ' Usa la barra de progreso nativa de SolidWorks (barra de estado). El usuario
 ' cancela pulsando ESC; el analisis se detiene sin haber modificado nada.
@@ -11,11 +12,6 @@ Option Explicit
 Public Cancelado As Boolean
 Private pb As SldWorks.UserProgressBar
 Private maxPb As Long
-Private t0 As Double
-Public TiempoPiezas As Double
-Public TiempoUniones As Double
-Public ParesRevisados As Long
-Public ParesCandidatos As Long
 
 Public Sub Inicia(app As SldWorks.SldWorks, ByVal texto As String, ByVal maximo As Long)
     Cancelado = False
@@ -25,7 +21,6 @@ Public Sub Inicia(app As SldWorks.SldWorks, ByVal texto As String, ByVal maximo 
     app.GetUserProgressBar pb
     If Not pb Is Nothing Then pb.Start 0, maxPb, texto
     On Error GoTo 0
-    t0 = Timer
 End Sub
 
 ' Devuelve True si el usuario ha cancelado (ESC)
@@ -38,9 +33,8 @@ Public Function Paso(ByVal pos As Long) As Boolean
     Paso = Cancelado
 End Function
 
-Public Function Fin() As Double
+Public Sub Fin()
     On Error Resume Next
     If Not pb Is Nothing Then pb.End
     Set pb = Nothing
-    Fin = Timer - t0
-End Function
+End Sub

@@ -1,5 +1,6 @@
 Attribute VB_Name = "mVec"
 Option Explicit
+Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
 '==============================================================================
 ' mVec - Tipo vector 3D y operaciones basicas (sin llamadas a SolidWorks).
 '==============================================================================

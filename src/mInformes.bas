@@ -1,5 +1,6 @@
 Attribute VB_Name = "mInformes"
 Option Explicit
+Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
 '==============================================================================
 ' mInformes - FASE 8: informe CSV (separador ";", se abre directo en Excel).
 ' Una fila por tarugo: union, tarugo, estado, piezas, posicion en el ensamblaje (mm),

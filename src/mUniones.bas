@@ -44,7 +44,6 @@ Public Sub DetectaUniones()
     NUniones = 0
     Erase Uniones
     Dim a As Long, b As Long
-    mOptim.ParesRevisados = 0: mOptim.ParesCandidatos = 0
     mOptim.Inicia Application.SldWorks, "Tarugos: buscando uniones", NPiezas
     For a = 0 To NPiezas - 2
         If mOptim.Paso(a) Then Exit For
@@ -53,16 +52,14 @@ Public Sub DetectaUniones()
                 If Piezas(b).Estado = "OK" Then
                     ' filtro barato por cajas envolventes: solo las parejas que se tocan
                     ' (o casi) llegan a comparar caras
-                    mOptim.ParesRevisados = mOptim.ParesRevisados + 1
                     If CajasSeTocan(Piezas(a), Piezas(b), 0.001) Then
-                        mOptim.ParesCandidatos = mOptim.ParesCandidatos + 1
                         ComparaPareja a, b
                     End If
                 End If
             Next b
         End If
     Next a
-    mOptim.TiempoUniones = mOptim.Fin
+    mOptim.Fin
 
     Dim i As Long
     For i = 0 To NUniones - 1

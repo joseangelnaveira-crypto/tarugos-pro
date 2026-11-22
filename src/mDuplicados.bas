@@ -1,5 +1,6 @@
 Attribute VB_Name = "mDuplicados"
 Option Explicit
+Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
 '==============================================================================
 ' mDuplicados - FASE 5: reconocer los taladros creados por esta macro.
 '
@@ -52,7 +53,7 @@ End Function
 
 ' Diagnostico: operaciones de la pieza con su tipo y el valor de TARUGO_META
 Public Function Diag(pmd As SldWorks.ModelDoc2) As String
-    Dim ft As SldWorks.Feature, v As String, rv As String, w As Boolean, r As String
+    Dim ft As SldWorks.Feature, v As String, r As String
     Set ft = pmd.FirstFeature
     Do While Not ft Is Nothing
         v = LeeMeta(ft)
@@ -68,7 +69,7 @@ End Function
 Public Function LeeExistentes(pmd As SldWorks.ModelDoc2, ByRef n As Long) As TMeta()
     Dim r() As TMeta
     n = 0
-    Dim ft As SldWorks.Feature, v As String, rv As String, w As Boolean, t() As String
+    Dim ft As SldWorks.Feature, v As String, t() As String
     Set ft = pmd.FirstFeature
     Do While Not ft Is Nothing
         ' el tipo de una operacion de corte aparece como "ICE" en SW 2024 (no "Cut"):

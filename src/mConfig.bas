@@ -4,7 +4,7 @@ Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Eje
 '==============================================================================
 ' mConfig - Parametros de la macro.
 ' Todos los valores de usuario se guardan en MILIMETROS (lo que ve el usuario).
-' La API de SolidWorks trabaja en METROS: usar MmAM() / MAMm() para convertir.
+' La API de SolidWorks trabaja en METROS: multiplicar por MM (0,001) para convertir de mm.
 ' (Fase 1: valores por defecto. El formulario de configuracion llega en la Fase 8.)
 '==============================================================================
 
@@ -78,11 +78,3 @@ Public Sub CfgRestaura()
     On Error Resume Next
     DeleteSetting APP_REG, "Config"
 End Sub
-
-Public Function MmAM(ByVal v As Double) As Double
-    MmAM = v * MM
-End Function
-
-Public Function MAMm(ByVal v As Double) As Double
-    MAMm = v / MM
-End Function

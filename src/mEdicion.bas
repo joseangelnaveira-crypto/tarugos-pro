@@ -17,14 +17,6 @@ Public Sub EstadoInicial()
     Next u
 End Sub
 
-Public Sub EliminaTarugo(ByVal i As Long)
-    Uniones(Flat(i).U).Activo(Flat(i).K) = False
-End Sub
-
-Public Sub RestauraTarugo(ByVal i As Long)
-    Uniones(Flat(i).U).Activo(Flat(i).K) = True
-End Sub
-
 Public Sub EliminaUnion(ByVal u As Long)
     Dim k As Long
     For k = 0 To Uniones(u).NT - 1: Uniones(u).Activo(k) = False: Next k

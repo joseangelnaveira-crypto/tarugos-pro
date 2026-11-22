@@ -45,9 +45,8 @@ Const MAX_RESALTE As Long = 25
 Private modoOriginal As Long
 Private modoCambiado As Boolean
 Private dibujando As Boolean           ' proteccion contra reentrada en DibujaTodo
-Private ultimoDibujo As Double     ' componente de referencia para Display3 (si hace falta)
+Private ultimoDibujo As Double         ' Timer del ultimo dibujado (minimo entre dibujados)
 Private errorDisplay As String
-Public Llamadas As Long                     ' numero de repintados atendidos (diagnostico)
 ' Resalte de las dos piezas del tarugo seleccionado (se seleccionan como componentes: SolidWorks
 ' las pinta con su color de seleccion, tambien en alambre). Poner False para desactivarlo.
 Private Const RESALTA_PIEZAS As Boolean = True
@@ -177,7 +176,6 @@ Public Sub DibujaTodo()
     End If
     dibujando = True
     On Error Resume Next
-    Llamadas = Llamadas + 1
     Dim i As Long, dem As Boolean, q As Boolean, vis As Boolean
     dem = DemasiadosMarcados()
     For i = 0 To NFlat - 1

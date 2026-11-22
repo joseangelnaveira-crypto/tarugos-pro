@@ -1,5 +1,6 @@
 Attribute VB_Name = "mPosiciones"
 Option Explicit
+Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
 '==============================================================================
 ' mPosiciones - FASE 2: numero y posicion de los tarugos de cada union.
 '

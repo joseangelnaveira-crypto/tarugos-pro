@@ -1,5 +1,6 @@
 Attribute VB_Name = "mGuardado"
 Option Explicit
+Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
 '==============================================================================
 ' mGuardado - FASE 5: TODO el acceso a archivos pasa por este modulo.
 '

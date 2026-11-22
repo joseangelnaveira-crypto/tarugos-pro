@@ -17,7 +17,7 @@ Public Sub Fase6_Deshacer()
     Dim amd As SldWorks.ModelDoc2
     Set amd = app.ActiveDoc
     If amd Is Nothing Then Exit Sub
-    If amd.GetType = swDocPART Then DeshacerPieza app, amd: Exit Sub     ' pieza multicuerpo
+    If amd.GetType = swDocPART Then DeshacerPieza amd: Exit Sub     ' pieza multicuerpo
     If amd.GetType <> swDocASSEMBLY Then MsgBox "Activa el ensamblaje.", vbExclamation, "Tarugos": Exit Sub
     Dim asm As SldWorks.AssemblyDoc
     Set asm = amd
@@ -130,7 +130,7 @@ Public Sub Fase6_Deshacer()
 End Sub
 
 ' Pieza (multicuerpo) activa: mismo proceso sobre su unico documento
-Private Sub DeshacerPieza(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
+Private Sub DeshacerPieza(md As SldWorks.ModelDoc2)
     If md.GetPathName = "" Then MsgBox "Guarda la pieza antes de deshacer.", vbExclamation, "Tarugos": Exit Sub
     If mGuardado.EsSoloLectura(md) Then MsgBox "La pieza es de solo lectura.", vbExclamation, "Tarugos": Exit Sub
     Dim ex() As mDuplicados.TMeta, nex As Long
