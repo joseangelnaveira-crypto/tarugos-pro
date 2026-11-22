@@ -55,7 +55,7 @@ Public Sub Mecaniza()
     Dim asm As SldWorks.AssemblyDoc
     Set asm = amd
     inf = ""
-    Dim carpeta As String, hechos As Long, nSustituidas As Long
+    Dim carpeta As String, hechos As Long, nSustituidas As Long, nRepetidos As Long
     On Error GoTo errores
 
     ' ---- tareas: un taladro por tarugo y pieza. Activo = crear (si no existe);
@@ -130,6 +130,9 @@ Public Sub Mecaniza()
                         modo(CLng(vv(q))) = 0
                         Anota "OK    " & Piezas(lista(CLng(vv(q)))).Nombre & ": instancia de " & Piezas(lista(i)).Nombre & _
                               " con los mismos taladros (se mecaniza el archivo una sola vez)"
+                        For a = 0 To NJobs - 1
+                            If Jobs(a).Pieza = lista(CLng(vv(q))) Then nRepetidos = nRepetidos + 1
+                        Next a
                     Next q
                 Else
                     resp = MsgBox("La pieza " & Mid(rutaDoc(i), InStrRev(rutaDoc(i), "\") + 1) & " esta repetida en el ensamblaje y " & _
@@ -258,6 +261,8 @@ Public Sub Mecaniza()
     Dim ruta As String
     ruta = EscribeInformeFinal(carpeta, amd, hechos)
     MsgBox "Taladros creados: " & hechos & " de " & NJobs & vbCrLf & "Ya existentes (no repetidos): " & nSaltados & vbCrLf & "Eliminados (descartados): " & nBorrados & vbCrLf & _
+           IIf(nRepetidos > 0, vbCrLf & "Aclaracion: " & nRepetidos & " de los " & NJobs & " taladros son de piezas REPETIDAS (mismo archivo y mismos taladros)." & vbCrLf & _
+               "Ya estan hechos en el archivo y por eso no se cuentan aparte." & vbCrLf, "") & _
            IIf(nSustituidas > 0, vbCrLf & "El ensamblaje ha cambiado (" & nSustituidas & " instancia(s) sustituida(s)): GUARDALO, no se guarda solo." & vbCrLf, "") & _
            vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
     Exit Sub
