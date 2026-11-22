@@ -33,6 +33,7 @@ Public Eventos As cEventos
 Public Formulario As frmRevision
 
 Private compBase As SldWorks.Component2
+Private refDisp As Object                   ' referencia para Display3: el componente (ensamblaje) o el documento (pieza)
 Private modeler As SldWorks.Modeler
 Private invCB As SldWorks.MathTransform     ' inversa de la transformacion del componente de referencia
 Const FACTOR_NORMAL As Double = 1.6     ' los cilindros se dibujan mas gruesos que el taladro real
@@ -90,6 +91,9 @@ Public Sub ConstruyePreview(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
     Next ip
     If compBase Is Nothing And primero >= 0 Then Set compBase = Piezas(primero).Comp
     If Not compBase Is Nothing Then Set invCB = compBase.GetTotalTransform(False).Inverse
+    ' Pieza multicuerpo: Display3 con Nothing NO dibuja nada (comprobado por COM el 22/11/2026);
+    ' pasando el propio documento como referencia si dibuja, en coordenadas de la pieza.
+    If compBase Is Nothing Then Set refDisp = md Else Set refDisp = compBase
 
     Dim u As Long, k As Long
     For u = 0 To NUniones - 1
@@ -191,7 +195,7 @@ Public Sub DibujaTodo()
                 Set nb = CreaCuerpo(Flat(i).U, Flat(i).K, IIf(q, FACTOR_SEL, FACTOR_NORMAL))
                 If Not nb Is Nothing Then Set Flat(i).Cuerpo = nb: Flat(i).Grande = q
             End If
-            If Not Flat(i).Cuerpo Is Nothing Then Flat(i).Cuerpo.Display3 compBase, ColorDe(i), swTempBodySelectable
+            If Not Flat(i).Cuerpo Is Nothing Then Flat(i).Cuerpo.Display3 refDisp, ColorDe(i), swTempBodySelectable
         End If
         If Err.Number <> 0 Then
             errorDisplay = Err.Number & ": " & Err.Description
