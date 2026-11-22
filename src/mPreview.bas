@@ -226,20 +226,47 @@ Private Sub ActualizaResalte()
             deseadas = AnadeNombre(deseadas, Piezas(Uniones(u).P2).Nombre)
         End If
     Next i
-    If deseadas = "" And resNombres = "" Then Exit Sub
+    Dim hayAros As Boolean
+    For i = 0 To NFlat - 1
+        If Not Flat(i).Aro Is Nothing Then hayAros = True: Exit For
+    Next i
+    If deseadas = "" And resNombres = "" And Not hayAros Then Exit Sub
 
-    ' componentes seleccionados ahora mismo (por la macro o por el usuario)
+    ' componentes y cuerpos seleccionados ahora mismo (por la macro o por el usuario)
     Dim sm As SldWorks.SelectionMgr, c As SldWorks.Component2, sel As String, n As Long
+    Dim o As Object, j As Long, aroSel() As Boolean
+    ReDim aroSel(0 To NFlat)
     Set sm = mdlP.SelectionManager
     n = sm.GetSelectedObjectCount2(-1)
     For i = 1 To n
         If sm.GetSelectedObjectType3(i, -1) = swSelCOMPONENTS Then
             Set c = sm.GetSelectedObject6(i, -1)
             If Not c Is Nothing Then sel = AnadeNombre(sel, c.Name2)
+        ElseIf sm.GetSelectedObjectType3(i, -1) = swSelSOLIDBODIES Then
+            Set o = sm.GetSelectedObject6(i, -1)
+            For j = 0 To NFlat - 1
+                If Not Flat(j).Aro Is Nothing Then
+                    If swAppP.IsSame(o, Flat(j).Aro) Then aroSel(j) = True
+                End If
+            Next j
         End If
     Next i
 
     seleccionPropia = True
+    ' El ARO del tarugo seleccionado tambien se selecciona: en alambre el color de los cuerpos
+    ' temporales no se aprecia (todos salen en el azul palido del modelo), pero SolidWorks
+    ' SI pinta la seleccion con color vivo. Se crea aqui (si no existe) para poder seleccionarlo;
+    ' al desmarcar se deselecciona ANTES de que DibujaTodo lo suelte.
+    For j = 0 To NFlat - 1
+        If Flat(j).Sel Then
+            If Flat(j).Aro Is Nothing Then Set Flat(j).Aro = CreaAro(Flat(j).U, Flat(j).K)
+            If Not Flat(j).Aro Is Nothing Then
+                If Not aroSel(j) Then Flat(j).Aro.Select2 True, Nothing
+            End If
+        ElseIf aroSel(j) Then
+            Flat(j).Aro.DeSelect
+        End If
+    Next j
     Dim p As Long, nom As String
     For p = 0 To NPiezas - 1
         nom = "|" & Piezas(p).Nombre & "|"
