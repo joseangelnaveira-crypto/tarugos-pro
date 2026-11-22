@@ -160,6 +160,11 @@ Private Function CreaAro(ByVal u As Long, ByVal k As Long) As SldWorks.Body2
     Set CreaAro = bd
 End Function
 
+' Limite de tarugos marcados que se resaltan uno a uno (lo consulta el formulario para avisar)
+Public Function MaxResalte() As Long
+    MaxResalte = MAX_RESALTE
+End Function
+
 ' True si hay mas tarugos marcados de los que se resaltan uno a uno (MAX_RESALTE)
 Private Function DemasiadosMarcados() As Boolean
     Dim i As Long, n As Long

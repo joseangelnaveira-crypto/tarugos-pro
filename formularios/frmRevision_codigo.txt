@@ -9,11 +9,14 @@ Option Explicit
 '   - QUITAR MARCADOS / RESTAURAR MARCADOS actuan sobre todos los marcados.
 '     Despues la accion se "consume": las casillas se limpian y el tarugo queda en
 '     la lista como ELIMINADO (para recuperarlo: MARCAR ELIMINADOS + RESTAURAR).
+'   - Clic en una fila: marca/desmarca. MAYUS+clic: marca el RANGO desde la ultima fila pulsada.
+'     Ctrl+A: marca todos. (Tambien MARCAR TODOS / DESMARCAR TODOS.)
 '   - Un clic sobre un tarugo en el 3D lo AGREGA a los marcados (nunca los borra);
 '     para desmarcar, la casilla.
 '==============================================================================
 
 Private actualizando As Boolean
+Private ultimoClic As Long        ' ultima fila pulsada sin Mayus: ancla de la seleccion por rango
 Public Aceptado As Boolean
 
 Private lblResumen As MSForms.Label
@@ -44,6 +47,7 @@ End Function
 ' Los controles se crean por codigo (no hay que depender de la libreria al importar el .frm)
 Private Sub UserForm_Initialize()
     actualizando = True          ' crear controles dispara eventos: ignorarlos
+    ultimoClic = -1
     Me.Width = 654
     Me.Height = 504
     Set lblResumen = Me.Controls.Add("Forms.Label.1", "lblResumen", True)
@@ -54,7 +58,7 @@ Private Sub UserForm_Initialize()
     lstTarugos.ColumnWidths = "110 pt;125 pt;125 pt;160 pt;80 pt"
     lstTarugos.ListStyle = 1         ' fmListStyleOption: una CASILLA por fila
     lstTarugos.MultiSelect = 1       ' fmMultiSelectMulti: cada clic marca/desmarca sin tocar los demas
-    lstTarugos.ControlTipText = "Marca con la casilla los tarugos que quieras quitar o restaurar. Los marcados se resaltan en el 3D."
+    lstTarugos.ControlTipText = "Clic: marca/desmarca. Mayus+clic: marca un rango. Ctrl+A: marca todos. Los marcados se resaltan en el 3D."
     ' fila de marcado, justo debajo de la lista
     Set btnMarcarTodos = NuevoBoton("btnMarcarTodos", "MARCAR TODOS", 12, 294, 108, 24, "Marca todos los tarugos de la lista")
     Set btnDesmarcarTodos = NuevoBoton("btnDesmarcarTodos", "DESMARCAR TODOS", 124, 294, 120, 24, "Quita todas las marcas (no cambia ningun tarugo)")
@@ -190,7 +194,50 @@ Private Sub MuestraInfo()
             Exit For
         End If
     Next i
+    Dim nSel As Long
+    For i = 0 To NFlat - 1
+        If Flat(i).Sel Then nSel = nSel + 1
+    Next i
+    If nSel > mPreview.MaxResalte() Then
+        lblInfo.Caption = "Hay mas de " & mPreview.MaxResalte() & " marcados: en el 3D solo se resaltan sus piezas (sin aro en cada tarugo) para que SolidWorks vaya rapido. Las marcas funcionan igual."
+    End If
     If mPreview.ErrorDeDisplay <> "" Then lblInfo.Caption = lblInfo.Caption & "  [err=" & mPreview.ErrorDeDisplay & "]"
+End Sub
+
+' La lista es la fuente de verdad de las marcas: antes de actuar se leen de ella (asi no depende
+' de que se haya disparado el evento Change, p. ej. al marcar con teclado o por rango)
+Private Sub SincronizaDesdeLista()
+    Dim i As Long
+    For i = 0 To NFlat - 1
+        Flat(i).Sel = lstTarugos.Selected(i)
+    Next i
+End Sub
+
+' MAYUS+clic: marca el rango entre la ultima fila pulsada (ancla) y la actual
+Private Sub lstTarugos_MouseUp(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    If actualizando Then Exit Sub
+    Dim idx As Long, a As Long, b As Long, i As Long
+    idx = lstTarugos.ListIndex
+    If idx < 0 Then Exit Sub
+    If (Shift And 1) <> 0 And ultimoClic >= 0 Then
+        If ultimoClic < idx Then a = ultimoClic: b = idx Else a = idx: b = ultimoClic
+        actualizando = True
+        For i = a To b
+            lstTarugos.Selected(i) = True
+        Next i
+        actualizando = False
+        lstTarugos_Change
+    Else
+        ultimoClic = idx
+    End If
+End Sub
+
+' Ctrl+A: marca todos
+Private Sub lstTarugos_KeyDown(ByVal KeyCode As MSForms.ReturnInteger, ByVal Shift As Integer)
+    If KeyCode = 65 And (Shift And 2) <> 0 Then
+        KeyCode = 0
+        MarcaSegun 1
+    End If
 End Sub
 
 Private Sub lstTarugos_Change()
@@ -235,6 +282,7 @@ Private Sub TerminaAccion(ByVal mensaje As String)
 End Sub
 
 Private Sub btnEliminar_Click()
+    SincronizaDesdeLista
     Dim i As Long, n As Long
     For i = 0 To NFlat - 1
         If Flat(i).Sel Then
@@ -250,6 +298,7 @@ Private Sub btnEliminar_Click()
 End Sub
 
 Private Sub btnRestaurar_Click()
+    SincronizaDesdeLista
     Dim i As Long, n As Long, nSin As Long
     For i = 0 To NFlat - 1
         If Flat(i).Sel Then
@@ -269,6 +318,7 @@ Private Sub btnRestaurar_Click()
 End Sub
 
 Private Sub btnEliminarUnion_Click()
+    SincronizaDesdeLista
     Dim i As Long, hecho() As Boolean, n As Long
     ReDim hecho(0 To NUniones)
     For i = 0 To NFlat - 1
@@ -281,6 +331,7 @@ Private Sub btnEliminarUnion_Click()
 End Sub
 
 Private Sub btnRestaurarUnion_Click()
+    SincronizaDesdeLista
     Dim i As Long, hecho() As Boolean, n As Long
     ReDim hecho(0 To NUniones)
     For i = 0 To NFlat - 1
