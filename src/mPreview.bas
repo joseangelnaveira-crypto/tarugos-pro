@@ -42,6 +42,11 @@ Const RADIO_ARO As Double = 0.06        ' m (60 mm de radio)
 Const ESPESOR_ARO As Double = 0.001     ' m
 Private modoOriginal As Long
 Private modoCambiado As Boolean
+' Color de seleccion durante la revision: el aro del tarugo seleccionado se pinta con
+' "Elemento seleccionado 1" de SolidWorks (el color de los cuerpos temporales no se ve en
+' alambre). Se pone en ROJO mientras dura la revision y se restaura el original en Limpia.
+Private colorSelOriginal As Long
+Private colorSelCambiado As Boolean
 Private dibujando As Boolean           ' proteccion contra reentrada en DibujaTodo
 Private ultimoDibujo As Double     ' componente de referencia para Display3 (si hace falta)
 Private errorDisplay As String
@@ -62,6 +67,10 @@ End Function
 Public Sub ConstruyePreview(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
     Set swAppP = app
     Set mdlP = md
+    If Not colorSelCambiado Then
+        colorSelOriginal = app.GetUserPreferenceIntegerValue(swSystemColorsSelectedItem1)
+        If app.SetUserPreferenceIntegerValue(swSystemColorsSelectedItem1, RGBl(255, 0, 0)) Then colorSelCambiado = True
+    End If
     NFlat = 0
     Erase Flat
     resNombres = ""
@@ -327,6 +336,10 @@ Public Sub Limpia()
         Set vw = mdlP.GetFirstModelView
         If Not vw Is Nothing Then vw.DisplayMode = modoOriginal
         modoCambiado = False
+    End If
+    If colorSelCambiado Then
+        swAppP.SetUserPreferenceIntegerValue swSystemColorsSelectedItem1, colorSelOriginal
+        colorSelCambiado = False
     End If
     Redibuja
     Set mdlP = Nothing
