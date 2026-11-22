@@ -140,7 +140,10 @@ Private Function CreaAro(ByVal u As Long, ByVal k As Long) As SldWorks.Body2
     cyl(7) = ESPESOR_ARO
     Dim bd As SldWorks.Body2
     Set bd = modeler.CreateBodyFromCyl(cyl)
-    If Not bd Is Nothing And Not invCB Is Nothing Then bd.ApplyTransform invCB
+    ' EN COORDENADAS DE ENSAMBLAJE (sin compensar con invCB) y dibujado con Display3 Nothing: la
+    ' seleccion de un cuerpo temporal se resalta en el espacio del documento sin aplicar la
+    ' transformacion del componente de referencia; con el aro compensado (como el cilindro) el
+    ' resalte rojo salia desplazado, fuera del modelo.
     Set CreaAro = bd
 End Function
 
@@ -184,7 +187,7 @@ Public Sub DibujaTodo()
         Flat(i).Cuerpo.Display3 compBase, ColorDe(i), swTempBodySelectable
         If Flat(i).Sel Then
             If Flat(i).Aro Is Nothing Then Set Flat(i).Aro = CreaAro(Flat(i).U, Flat(i).K)
-            If Not Flat(i).Aro Is Nothing Then Flat(i).Aro.Display3 compBase, ColorDe(i), swTempBodySelectable
+            If Not Flat(i).Aro Is Nothing Then Flat(i).Aro.Display3 Nothing, ColorDe(i), swTempBodySelectable
         ElseIf Not Flat(i).Aro Is Nothing Then
             ' Al desmarcar hay que SOLTAR el aro: dejar de dibujarlo no basta, el cuerpo temporal
             ' sigue en pantalla mientras el objeto exista (igual que con el cilindro grande, que
