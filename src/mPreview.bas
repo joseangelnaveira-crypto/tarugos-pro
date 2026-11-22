@@ -83,14 +83,23 @@ Public Sub ConstruyePreview(app As SldWorks.SldWorks, md As SldWorks.ModelDoc2)
 
     ' Display3 dibuja el cuerpo temporal en el espacio del COMPONENTE de referencia (le aplica su
     ' transformacion). Si no se compensa, los cilindros quedan fuera de sitio o no se ven.
+    ' Ademas el cuerpo temporal hereda el COLOR de aristas de ese componente: los que tienen color propio
+    ' (el azul claro por defecto) salen en azul palido en alambre y los que NO lo tienen salen en negro,
+    ' que se ve mucho mejor. Por eso se prefiere un componente sin color propio; si no hay, el primero.
     Set compBase = Nothing: Set invCB = Nothing
-    Dim ip As Long
+    Dim ip As Long, primero As Long, mpv As Variant
+    primero = -1
     For ip = 0 To NPiezas - 1
         If Piezas(ip).Estado = "OK" Then
-            Set compBase = Piezas(ip).Comp
-            Exit For
+            If primero < 0 Then primero = ip
+            mpv = Empty
+            On Error Resume Next
+            mpv = Piezas(ip).Comp.MaterialPropertyValues
+            On Error GoTo 0
+            If IsEmpty(mpv) Or IsNull(mpv) Then Set compBase = Piezas(ip).Comp: Exit For
         End If
     Next ip
+    If compBase Is Nothing And primero >= 0 Then Set compBase = Piezas(primero).Comp
     If Not compBase Is Nothing Then Set invCB = compBase.GetTotalTransform(False).Inverse
 
     Dim u As Long, k As Long
@@ -129,7 +138,7 @@ Private Function CreaCuerpo(ByVal u As Long, ByVal k As Long, ByVal factor As Do
     cyl(7) = (Cfg.Prof1 + Cfg.Prof2) * MM
     Dim bd As SldWorks.Body2
     Set bd = modeler.CreateBodyFromCyl(cyl)
-    ' en coordenadas de ensamblaje, sin compensar (se dibuja con Display3 Nothing: ver DibujaTodo)
+    If Not bd Is Nothing And Not invCB Is Nothing Then bd.ApplyTransform invCB
     Set CreaCuerpo = bd
 End Function
 
@@ -199,7 +208,7 @@ Public Sub DibujaTodo()
             Set nb = CreaCuerpo(Flat(i).U, Flat(i).K, IIf(q, FACTOR_SEL, FACTOR_NORMAL))
             If Not nb Is Nothing Then Set Flat(i).Cuerpo = nb: Flat(i).Grande = q
         End If
-        Flat(i).Cuerpo.Display3 Nothing, ColorDe(i), swTempBodySelectable
+        Flat(i).Cuerpo.Display3 compBase, ColorDe(i), swTempBodySelectable
         If q Then
             If Flat(i).Aro Is Nothing Then Set Flat(i).Aro = CreaAro(Flat(i).U, Flat(i).K)
             If Not Flat(i).Aro Is Nothing Then Flat(i).Aro.Display3 Nothing, ColorDe(i), swTempBodySelectable
