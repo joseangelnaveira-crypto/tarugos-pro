@@ -12,7 +12,7 @@ Public Sub EstadoInicial()
     Dim u As Long, k As Long
     For u = 0 To NUniones - 1
         For k = 0 To Uniones(u).NT - 1
-            Uniones(u).Activo(k) = (Uniones(u).Estado = "VALIDA")
+            Uniones(u).Activo(k) = (Uniones(u).Estado = "VALIDA") And Not Uniones(u).SinMat(k)
         Next k
     Next u
 End Sub
@@ -32,7 +32,10 @@ End Sub
 
 Public Sub RestauraUnion(ByVal u As Long)
     Dim k As Long
-    For k = 0 To Uniones(u).NT - 1: Uniones(u).Activo(k) = True: Next k
+    ' los tarugos sin material (hueco) no se reactivan con "restaurar union" / "aceptar todos"
+    For k = 0 To Uniones(u).NT - 1
+        If Not Uniones(u).SinMat(k) Then Uniones(u).Activo(k) = True
+    Next k
 End Sub
 
 ' Reactiva todos los tarugos de las uniones VALIDAS (las dudosas no se tocan)

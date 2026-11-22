@@ -11,6 +11,7 @@ Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Eje
 '
 ' Colores:  verde = activo | naranja = union dudosa forzada | gris = eliminado
 '           rojo (mas grande y con aro) = seleccionado
+'           rojo oscuro = sin material (cae en un hueco; descartado, ver mHuecos)
 '==============================================================================
 
 Public Type TFlat
@@ -131,6 +132,8 @@ End Function
 Private Function ColorDe(i As Long) As Long
     If Flat(i).Sel Then
         ColorDe = RGBl(230, 20, 20)            ' seleccionado (a quitar): rojo y mas grande
+    ElseIf Uniones(Flat(i).U).SinMat(Flat(i).K) Then
+        ColorDe = RGBl(150, 0, 0)              ' sin material (cae en un hueco): rojo oscuro
     ElseIf Not Uniones(Flat(i).U).Activo(Flat(i).K) Then
         ColorDe = RGBl(140, 140, 140)          ' ya eliminado: gris
     ElseIf Uniones(Flat(i).U).Estado = "VALIDA" Then

@@ -30,6 +30,7 @@ Public Type TUnion
     NT As Long               ' numero de tarugos
     Pos() As TV3             ' centro de cada tarugo en el plano de contacto
     Activo() As Boolean
+    SinMat() As Boolean      ' tarugo descartado por caer en un hueco de una de las piezas (mHuecos)
 End Type
 
 Public Uniones() As TUnion
@@ -181,6 +182,11 @@ Private Sub AnalizaContacto(a As Long, i As Long, b As Long, j As Long, ByVal ga
     Casco2 qa, na, ha, nha
     Casco2 qb, nb, hb, nhb
     If nha < 3 Or nhb < 3 Then Exit Sub
+    ' Cara "compleja": con agujeros (varios bucles) o con contorno exterior no convexo
+    ' (muescas, recortes). Solo esas se comprueban punto a punto (mHuecos); las caras
+    ' rectangulares se tratan exactamente como siempre.
+    Dim complejo As Boolean
+    complejo = (ca.Ref.GetLoopCount > 1) Or (cb.Ref.GetLoopCount > 1) Or (nha <> na \ 2) Or (nhb <> nb \ 2)
 
     Dim ov() As TP2, nov As Long
     Intersecta2 ha, nha, hb, nhb, ov, nov
@@ -283,6 +289,11 @@ Private Sub AnalizaContacto(a As Long, i As Long, b As Long, j As Long, ByVal ga
         If errPos <> "" Then
             un.Estado = "DUDOSA"
             un.Motivo = AnadeMotivo(un.Motivo, errPos)
+        ElseIf complejo And un.NT > 0 Then
+            ' comprobar que cada tarugo cae sobre material de las DOS piezas (mover o descartar)
+            Dim txtHueco As String
+            txtHueco = mHuecos.AjustaPorHuecos(un, ca.Ref, cb.Ref)
+            If txtHueco <> "" Then un.Motivo = AnadeMotivo(un.Motivo, txtHueco)
         End If
     End If
     AnadeUnion un

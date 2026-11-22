@@ -2,6 +2,10 @@ Attribute VB_Name = "mMain"
 Option Explicit
 Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
 Private Const DEBUG_INFORME As Boolean = False   ' True: vuelca caras y transformaciones al informe
+' Ensamblaje que se analizo en la ultima revision (ruta|titulo). mTaladros lo compara con el
+' documento activo: la ventana de revision no es modal y, si se cambia de documento, Piezas()
+' y Uniones() serian de otro ensamblaje.
+Public AsmAnalizado As String
 ' TARUGOS PRO - Fases 1 y 2. Ejecutar Fase2_Analizar (uniones y tarugos) o
 ' Fase1_Analizar (solo piezas) con un ensamblaje abierto. No modifican documentos.
 ' ---
@@ -257,6 +261,7 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
     End If
 
     EstadoInicial
+    AsmAnalizado = md.GetPathName & "|" & md.GetTitle
     md.ClearSelection2 True
     ConstruyePreview swApp, md
 

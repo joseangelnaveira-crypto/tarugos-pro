@@ -25,6 +25,7 @@ Public Function CalculaPosiciones(un As TUnion) As String
     un.NT = 0
     Erase un.Pos
     Erase un.Activo
+    Erase un.SinMat
 
     Dim Lmm As Double, d As Double, n As Long
     Lmm = un.L / MM
@@ -52,6 +53,7 @@ Public Function CalculaPosiciones(un As TUnion) As String
 
     ReDim un.Pos(0 To n - 1)
     ReDim un.Activo(0 To n - 1)
+    ReDim un.SinMat(0 To n - 1)
     Dim k As Long, s As Double
     For k = 0 To n - 1
         If n = 1 Then s = Lmm / 2 Else s = d + k * sep

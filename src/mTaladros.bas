@@ -44,9 +44,19 @@ Public Sub Mecaniza()
     Set amd = app.ActiveDoc
     If amd Is Nothing Then Exit Sub
     If amd.GetType <> swDocASSEMBLY Then MsgBox "Activa el ensamblaje.", vbExclamation, "Tarugos": Exit Sub
+    ' El ensamblaje activo debe ser el que se analizo en la revision: la ventana de revision
+    ' no es modal y, si se cambio de documento, Piezas()/Uniones() son de otro ensamblaje
+    ' (se mezclarian rutas, copias de seguridad y sustituciones).
+    If amd.GetPathName & "|" & amd.GetTitle <> mMain.AsmAnalizado Then
+        MsgBox "El documento activo no es el ensamblaje que se analizo en la revision." & vbCrLf & _
+               "Activa de nuevo ese ensamblaje y repite el analisis.", vbExclamation, "Tarugos"
+        Exit Sub
+    End If
     Dim asm As SldWorks.AssemblyDoc
     Set asm = amd
     inf = ""
+    Dim carpeta As String, hechos As Long, nSustituidas As Long
+    On Error GoTo errores
 
     ' ---- tareas: un taladro por tarugo y pieza. Activo = crear (si no existe);
     '      descartado = ELIMINAR el taladro si ya existia (lo hizo esta macro) ----
@@ -163,7 +173,11 @@ Public Sub Mecaniza()
         MsgBox "Ninguna pieza se puede mecanizar:" & vbCrLf & inf, vbExclamation, "Tarugos"
         Exit Sub
     End If
+    Dim cerca As String
+    cerca = TaladrosCercanos()
+    If cerca <> "" Then Anota cerca
     If MsgBox("Se van a modificar / crear estos archivos:" & vbCrLf & vbCrLf & resumen & vbCrLf & _
+              IIf(cerca <> "", cerca & vbCrLf, "") & _
               "Diametro " & Cfg.Diametro & " mm. Antes se hara una copia de seguridad de los originales." & vbCrLf & _
               "Los taladros que ya existan no se duplican. Los tarugos DESCARTADOS que ya estuvieran taladrados se ELIMINAN de las piezas." & vbCrLf & "¿Continuar?", _
               vbYesNo + vbExclamation + vbDefaultButton2, "Tarugos - mecanizado") <> vbYes Then
@@ -171,7 +185,7 @@ Public Sub Mecaniza()
     End If
 
     ' ---- copia de seguridad de los originales que se van a modificar ----
-    Dim carpeta As String, destino As String
+    Dim destino As String
     carpeta = mGuardado.CarpetaRespaldo(amd)
     For i = 0 To nPz - 1
         If modo(i) = 1 Then
@@ -184,6 +198,10 @@ Public Sub Mecaniza()
         End If
     Next i
     Anota "Copia de seguridad en: " & carpeta
+    ' copia tambien el archivo del propio ensamblaje (las piezas se respaldan arriba)
+    If Not mGuardado.CopiaA(amd, carpeta & "\" & Mid(amd.GetPathName, InStrRev(amd.GetPathName, "\") + 1)) Then
+        Anota "AVISO no se pudo copiar el ensamblaje a la carpeta de respaldo"
+    End If
 
     ' ---- copias independientes (se hacen ANTES de modificar ningun original) ----
     Dim nueva As String
@@ -204,7 +222,6 @@ Public Sub Mecaniza()
     ' ---- mecanizar documento a documento ----
     Dim titAsm As String
     titAsm = amd.GetTitle
-    Dim hechos As Long
     nSaltados = 0: nBorrados = 0
     Dim miemb2() As Long, nmm As Long, vm() As String
     For i = 0 To nPz - 1
@@ -230,6 +247,7 @@ Public Sub Mecaniza()
         If modo(i) = 2 Then
             If mGuardado.ReemplazaInstancia(asm, amd, Piezas(lista(i)).Comp, rutaDoc(i)) Then
                 Anota "Instancia " & Piezas(lista(i)).Nombre & " sustituida por " & rutaDoc(i)
+                nSustituidas = nSustituidas + 1
             Else
                 Anota "ERROR no se pudo sustituir " & Piezas(lista(i)).Nombre & " por su copia; hazlo manualmente (Reemplazar componentes)"
             End If
@@ -237,6 +255,30 @@ Public Sub Mecaniza()
     Next i
     asm.ForceRebuild3 False
 
+    Dim ruta As String
+    ruta = EscribeInformeFinal(carpeta, amd, hechos)
+    MsgBox "Taladros creados: " & hechos & " de " & NJobs & vbCrLf & "Ya existentes (no repetidos): " & nSaltados & vbCrLf & "Eliminados (descartados): " & nBorrados & vbCrLf & _
+           IIf(nSustituidas > 0, vbCrLf & "El ensamblaje ha cambiado (" & nSustituidas & " instancia(s) sustituida(s)): GUARDALO, no se guarda solo." & vbCrLf, "") & _
+           vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
+    Exit Sub
+
+errores:
+    ' Error no previsto: no se pierde el informe. Las piezas ya guardadas lo estan; la que
+    ' se estaba procesando puede quedar abierta SIN guardar (hay copia de seguridad).
+    Dim txtErr As String
+    txtErr = Err.Number & " - " & Err.Description        ' se guarda antes: On Error limpia Err
+    Anota "ERROR INESPERADO: " & txtErr & _
+          ". Las piezas ya guardadas lo estan; la que se procesaba puede haber quedado abierta sin guardar. Revisa el informe y la copia de seguridad."
+    On Error Resume Next
+    ruta = EscribeInformeFinal(carpeta, amd, hechos)
+    MsgBox "Error inesperado durante el mecanizado: " & txtErr & vbCrLf & vbCrLf & _
+           "Informe: " & ruta, vbCritical, "Tarugos - Fase 5"
+End Sub
+
+' Escribe Informe_Fase5.txt y el CSV. Si el error ocurrio antes de crear la carpeta de
+' respaldo, se usa la carpeta del ensamblaje. Devuelve la ruta del informe.
+Private Function EscribeInformeFinal(ByVal carpeta As String, amd As SldWorks.ModelDoc2, ByVal hechos As Long) As String
+    If carpeta = "" Then carpeta = Left(amd.GetPathName, InStrRev(amd.GetPathName, "\") - 1)
     Dim ruta As String
     ruta = carpeta & "\Informe_Fase5.txt"
     Dim ff As Integer
@@ -249,9 +291,8 @@ Public Sub Mecaniza()
     Print #ff, inf
     Close #ff
     mInformes.ExportaCSV carpeta & "\Informe_Tarugos.csv", amd.GetTitle
-    MsgBox "Taladros creados: " & hechos & " de " & NJobs & vbCrLf & "Ya existentes (no repetidos): " & nSaltados & vbCrLf & "Eliminados (descartados): " & nBorrados & vbCrLf & vbCrLf & "Informe: " & ruta, _
-           vbInformation, "Tarugos - Fase 5"
-End Sub
+    EscribeInformeFinal = ruta
+End Function
 
 ' Taladros de la pieza p en coordenadas de la PIEZA
 Private Function JobsPieza(ByVal p As Long, pps() As TV3, nns() As TV3, profs() As Double) As Long
@@ -293,6 +334,15 @@ End Function
 Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, miembros() As Long, ByVal nm As Long) As Long
     Dim e As Long, w As Long
     Dim pmd As SldWorks.ModelDoc2
+    Dim creados As Long                 ' (se declara aqui para que el manejador de errores lo vea)
+    On Error GoTo errDoc
+    ' Si la pieza ya tenia ventana abierta (la abrio el usuario), no se cierra al terminar:
+    ' solo se cierran las ventanas que abre la macro. Una pieza cargada por el ensamblaje
+    ' pero sin ventana tiene Visible = False.
+    Dim ventanaPrevia As Boolean
+    Set pmd = app.GetOpenDocumentByName(path)
+    If Not pmd Is Nothing Then ventanaPrevia = pmd.Visible
+    Set pmd = Nothing
     ' La pieza se abre Y SE ACTIVA (con ventana). El modo sin ventana (DocumentVisible False,
     ' sin ActivateDoc3) fallaba: SelectByID2 no devolvia la cara y InsertSketch no abria el
     ' croquis (0 de 118 taladros), porque SolidWorks necesita el documento activo para
@@ -307,7 +357,7 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
     Set act = pmd
     If mGuardado.EsSoloLectura(act) Then Anota "OMITIDA " & path & ": solo lectura": Exit Function
 
-    Dim a As Long, m As Long, creados As Long, pp As TV3, nn As TV3, f As SldWorks.Face2
+    Dim a As Long, m As Long, pp As TV3, nn As TV3, f As SldWorks.Face2
     Dim inv As SldWorks.MathTransform
     Dim ex() As mDuplicados.TMeta, nex As Long, est As Long, profmm As Double
     Dim nombreEx As String, borrados As Long
@@ -369,13 +419,65 @@ siguiente:
             ' Ya guardada: se cierra su ventana para que no queden una por pieza abiertas
             ' (y no pregunte "guardar cambios" al cerrar). Si el ensamblaje la usa, el
             ' documento sigue cargado en memoria; solo se cierra la ventana.
-            app.CloseDoc act.GetTitle
+            If Not ventanaPrevia Then app.CloseDoc act.GetTitle
         End If
     Else
         Anota "Sin cambios en " & path
-        app.CloseDoc act.GetTitle
+        If Not ventanaPrevia Then app.CloseDoc act.GetTitle
     End If
     MecanizaDoc = creados
+    Exit Function
+
+errDoc:
+    ' Error no previsto en esta pieza: se anota y se sigue con las demas. La ventana queda
+    ' abierta SIN guardar (no se sabe en que estado esta); hay copia de seguridad.
+    Anota "ERROR INESPERADO en " & path & ": " & Err.Number & " - " & Err.Description & _
+          ". La pieza queda abierta sin guardar: revisala (hay copia de seguridad)."
+    MecanizaDoc = creados
+End Function
+
+' Pares de taladros ACTIVOS de la misma pieza, de uniones distintas, cuyos ejes se cruzan o
+' pasan a menos de 1,5 diametros (por ejemplo, tarugos de dos uniones perpendiculares que
+' coinciden en una esquina). Solo es un aviso: no cambia nada. Devuelve "" si no hay ninguno.
+Private Function TaladrosCercanos() As String
+    Dim a As Long, b As Long, n As Long, r As String
+    For a = 0 To NJobs - 2
+        If Not Jobs(a).Borrar Then
+            For b = a + 1 To NJobs - 1
+                If Jobs(b).Pieza = Jobs(a).Pieza Then
+                    If Not Jobs(b).Borrar And Jobs(b).U <> Jobs(a).U Then
+                        If DistanciaEjes(a, b) < 1.5 * Cfg.Diametro * MM Then
+                            n = n + 1
+                            If n <= 10 Then r = r & "   " & Jobs(a).Nombre & "  y  " & Jobs(b).Nombre & vbCrLf
+                        End If
+                    End If
+                End If
+            Next b
+        End If
+    Next a
+    If n > 0 Then
+        TaladrosCercanos = "AVISO: " & n & " par(es) de taladros de la misma pieza se cruzan o quedan a menos de 1,5 diametros:" & _
+                           vbCrLf & r & IIf(n > 10, "   ..." & vbCrLf, "")
+    End If
+End Function
+
+' Distancia minima entre los ejes de dos taladros, midiendo 8 puntos en cada eje
+' (del punto de contacto hacia dentro de la pieza, una longitud igual a la profundidad)
+Private Function DistanciaEjes(ByVal a As Long, ByVal b As Long) As Double
+    Dim i As Long, j As Long, t As Double, u As Double, d As Double, mejor As Double
+    Dim pa As TV3, pb As TV3
+    mejor = 1E+30
+    For i = 0 To 7
+        t = i / 7 * Jobs(a).Prof
+        pa = V3(Jobs(a).Pc.X - Jobs(a).Nout.X * t, Jobs(a).Pc.Y - Jobs(a).Nout.Y * t, Jobs(a).Pc.Z - Jobs(a).Nout.Z * t)
+        For j = 0 To 7
+            u = j / 7 * Jobs(b).Prof
+            pb = V3(Jobs(b).Pc.X - Jobs(b).Nout.X * u, Jobs(b).Pc.Y - Jobs(b).Nout.Y * u, Jobs(b).Pc.Z - Jobs(b).Nout.Z * u)
+            d = VLen(VSub(pa, pb))
+            If d < mejor Then mejor = d
+        Next j
+    Next i
+    DistanciaEjes = mejor
 End Function
 
 Private Sub AnadeJob(j As TJob)
