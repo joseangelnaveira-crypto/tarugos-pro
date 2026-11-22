@@ -361,9 +361,19 @@ siguiente:
     If creados + borrados > 0 Then
         Dim er As Long
         er = mGuardado.GuardaDoc(act)
-        If er <> 0 Then Anota "AVISO error al guardar " & path & " (codigo " & er & ")" Else Anota "Guardada " & path & " (" & creados & " creados, " & borrados & " eliminados)"
+        If er <> 0 Then
+            ' Si no se guardo, la ventana se deja abierta para no perder los cambios
+            Anota "AVISO error al guardar " & path & " (codigo " & er & ")"
+        Else
+            Anota "Guardada " & path & " (" & creados & " creados, " & borrados & " eliminados)"
+            ' Ya guardada: se cierra su ventana para que no queden una por pieza abiertas
+            ' (y no pregunte "guardar cambios" al cerrar). Si el ensamblaje la usa, el
+            ' documento sigue cargado en memoria; solo se cierra la ventana.
+            app.CloseDoc act.GetTitle
+        End If
     Else
         Anota "Sin cambios en " & path
+        app.CloseDoc act.GetTitle
     End If
     MecanizaDoc = creados
 End Function
