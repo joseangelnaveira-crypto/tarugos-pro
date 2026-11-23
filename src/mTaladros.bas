@@ -478,6 +478,10 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
                     Set f = BuscaCara(act, pp, nn, Jobs(a).Pieza)
                     If f Is Nothing Then
                         Anota "ERROR " & Jobs(a).Nombre & ": no se encontro la cara de contacto en la pieza"
+                    ElseIf AgujeroEnCara(f, pp) Then
+                        ' el modelo ya trae ahi un agujero del diametro del tarugo: no se taladra otro encima
+                        nSaltados = nSaltados + 1
+                        Anota "YA HAY un agujero del modelo en " & Jobs(a).Nombre & " (no se taladra otro encima)"
                     ElseIf CreaTaladro(act, f, pp, nn, Jobs(a)) Then
                         creados = creados + 1
                     End If
@@ -598,6 +602,40 @@ Private Function EnLista(l() As Long, ByVal n As Long, ByVal v As Long) As Boole
     For i = 0 To n - 1
         If l(i) = v Then EnLista = True: Exit Function
     Next i
+End Function
+
+' True si la cara ya tiene un agujero circular del diametro del tarugo centrado en pp
+' (p. ej. los agujeros de tarugo que el mueble ya trae). Solo se miran los bucles interiores.
+Private Function AgujeroEnCara(f As SldWorks.Face2, pp As TV3) As Boolean
+    Dim lp As SldWorks.Loop2, edgs As Variant, k As Long, e As SldWorks.Edge
+    Dim cv As SldWorks.Curve, cp As Variant
+    On Error Resume Next
+    Set lp = f.GetFirstLoop
+    Do While Not lp Is Nothing
+        If lp.IsOuter = 0 Then
+            edgs = lp.GetEdges
+            If Not IsEmpty(edgs) Then
+                For k = 0 To UBound(edgs)
+                    Set e = edgs(k)
+                    Set cv = e.GetCurve
+                    If Not cv Is Nothing Then
+                        If cv.Identity = 3002 Then
+                            cp = cv.CircleParams                  ' centro(0..2), eje(3..5), radio(6)
+                            If IsArray(cp) Then
+                                If Abs(cp(6) - Cfg.Diametro * MM / 2) < 0.00005 Then
+                                    If VLen(V3(cp(0) - pp.X, cp(1) - pp.Y, cp(2) - pp.Z)) < 0.0003 Then
+                                        AgujeroEnCara = True
+                                        Exit Function
+                                    End If
+                                End If
+                            End If
+                        End If
+                    End If
+                Next k
+            End If
+        End If
+        Set lp = lp.GetNext
+    Loop
 End Function
 
 ' Cara plana de la pieza (espacio de la pieza) con normal nn que contiene el punto pp
