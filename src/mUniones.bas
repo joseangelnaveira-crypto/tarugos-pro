@@ -31,6 +31,7 @@ Public Type TUnion
     Pos() As TV3             ' centro de cada tarugo en el plano de contacto
     Activo() As Boolean
     SinMat() As Boolean      ' tarugo descartado por caer en un hueco de una de las piezas (mHuecos)
+    Hecho() As Long          ' por tarugo: 0 = nada hecho, 1 = agujero ya en la pieza 1, 2 = ya en la pieza 2, 3 = en las dos
 End Type
 
 Public Uniones() As TUnion
@@ -302,6 +303,7 @@ Private Sub AnalizaContacto(a As Long, i As Long, b As Long, j As Long, ByVal ga
             txtHueco = mHuecos.AjustaPorHuecos(un, ca.Ref, cb.Ref)
             If txtHueco <> "" Then un.Motivo = AnadeMotivo(un.Motivo, txtHueco)
         End If
+        If un.NT > 0 Then MarcaHechos un, ca.Ref, cb.Ref, (un.P1 = a)
     End If
     AnadeUnion un
 End Sub
@@ -328,3 +330,53 @@ Private Sub AnadeUnion(un As TUnion)
     Uniones(NUniones) = un
     NUniones = NUniones + 1
 End Sub
+
+' Marca los tarugos cuyo agujero YA existe en el modelo (el mueble ya trae agujeros de tarugo).
+' fa/fb son las caras de contacto de las piezas a/b; aEsP1 indica si a es la pieza 1.
+Private Sub MarcaHechos(un As TUnion, fa As SldWorks.Face2, fb As SldWorks.Face2, ByVal aEsP1 As Boolean)
+    Dim k As Long, ha As Boolean, hb As Boolean
+    ReDim un.Hecho(0 To un.NT - 1)
+    For k = 0 To un.NT - 1
+        ha = AgujeroEnCara(fa, un.Pos(k))
+        hb = AgujeroEnCara(fb, un.Pos(k))
+        If aEsP1 Then
+            un.Hecho(k) = IIf(ha, 1, 0) + IIf(hb, 2, 0)
+        Else
+            un.Hecho(k) = IIf(hb, 1, 0) + IIf(ha, 2, 0)
+        End If
+    Next k
+End Sub
+
+' True si la cara ya tiene un agujero circular del diametro del tarugo centrado en pp
+' (p. ej. los agujeros de tarugo que el mueble ya trae). Solo se miran los bucles interiores.
+Public Function AgujeroEnCara(f As SldWorks.Face2, pp As TV3) As Boolean
+    Dim lp As SldWorks.Loop2, edgs As Variant, k As Long, e As SldWorks.Edge
+    Dim cv As SldWorks.Curve, cp As Variant
+    On Error Resume Next
+    Set lp = f.GetFirstLoop
+    Do While Not lp Is Nothing
+        If lp.IsOuter = 0 Then
+            edgs = lp.GetEdges
+            If Not IsEmpty(edgs) Then
+                For k = 0 To UBound(edgs)
+                    Set e = edgs(k)
+                    Set cv = e.GetCurve
+                    If Not cv Is Nothing Then
+                        If cv.Identity = 3002 Then
+                            cp = cv.CircleParams                  ' centro(0..2), eje(3..5), radio(6)
+                            If IsArray(cp) Then
+                                If Abs(cp(6) - Cfg.Diametro * MM / 2) < 0.00005 Then
+                                    If VLen(V3(cp(0) - pp.X, cp(1) - pp.Y, cp(2) - pp.Z)) < 0.0003 Then
+                                        AgujeroEnCara = True
+                                        Exit Function
+                                    End If
+                                End If
+                            End If
+                        End If
+                    End If
+                Next k
+            End If
+        End If
+        Set lp = lp.GetNext
+    Loop
+End Function

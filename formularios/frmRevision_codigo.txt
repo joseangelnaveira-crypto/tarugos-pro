@@ -100,6 +100,8 @@ Public Sub Refresca()
             lstTarugos.List(i, 4) = "SIN MATERIAL"
         ElseIf Not Uniones(u).Activo(k) Then
             lstTarugos.List(i, 4) = "ELIMINADO"
+        ElseIf TextoHecho(u, k) <> "" Then
+            lstTarugos.List(i, 4) = TextoHecho(u, k)
         ElseIf Uniones(u).Estado = "VALIDA" Then
             lstTarugos.List(i, 4) = "ACTIVO"
         Else
@@ -117,12 +119,29 @@ Public Sub Refresca()
         If Uniones(u).Estado = "VALIDA" Then nV = nV + 1
         If Uniones(u).Estado = "DUDOSA" Then nD = nD + 1
     Next u
+    Dim nHechos As Long
+    For i = 0 To NFlat - 1
+        If TextoHecho(Flat(i).U, Flat(i).K) = "YA HECHO" Then nHechos = nHechos + 1
+    Next i
     lblResumen.Caption = "Piezas analizadas: " & nPz & "     Uniones validas: " & nV & "     Uniones dudosas: " & nD & vbCrLf & _
-        "Tarugos: " & ContarTarugos() & "  (activos " & ContarActivos() & ", eliminados/pendientes " & (ContarTarugos() - ContarActivos()) & ")" & vbCrLf & _
+        "Tarugos: " & ContarTarugos() & "  (activos " & ContarActivos() & ", eliminados/pendientes " & (ContarTarugos() - ContarActivos()) & ")" & IIf(nHechos > 0, "   [" & nHechos & " ya hechos en el modelo]", "") & vbCrLf & _
         "Diametro " & Cfg.Diametro & " mm   Profundidad pieza 1: " & Cfg.Prof1 & " mm   pieza 2: " & Cfg.Prof2 & " mm"
     actualizando = False
     ActualizaContador
 End Sub
+
+' "YA HECHO" si el modelo ya trae el agujero en las dos piezas; "HECHO EN P1/P2" si solo en una
+Private Function TextoHecho(ByVal u As Long, ByVal k As Long) As String
+    Dim h As Long
+    On Error Resume Next
+    h = Uniones(u).Hecho(k)
+    On Error GoTo 0
+    Select Case h
+        Case 3: TextoHecho = "YA HECHO"
+        Case 1: TextoHecho = "HECHO EN P1"
+        Case 2: TextoHecho = "HECHO EN P2"
+    End Select
+End Function
 
 ' "Marcados: 7 de 59  (3 activos, 4 eliminados)"
 Private Sub ActualizaContador()
