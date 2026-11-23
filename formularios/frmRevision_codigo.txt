@@ -35,6 +35,10 @@ Private fraLista As MSForms.Frame
 Private chks() As MSForms.CheckBox
 Private filas() As cFila
 Private nFilas As Long
+Private WithEvents btnIni As MSForms.CommandButton
+Private WithEvents btnSube As MSForms.CommandButton
+Private WithEvents btnBaja As MSForms.CommandButton
+Private WithEvents btnFin As MSForms.CommandButton
 Private WithEvents btnMarcarTodos As MSForms.CommandButton
 Private WithEvents btnDesmarcarTodos As MSForms.CommandButton
 Private WithEvents btnMarcarEliminados As MSForms.CommandButton
@@ -101,14 +105,19 @@ Private Sub UserForm_Initialize()
     NuevaLeyenda 408, 100, "SIN MATERIAL"
     NuevaLeyenda 512, 92, "FORZADO"
     Set lblCab = Me.Controls.Add("Forms.Label.1", "lblCab", True)
-    lblCab.Left = 28: lblCab.Top = 78: lblCab.Width = 604: lblCab.Height = 12      ' alineada con el texto de las filas (que empieza tras la casilla)
+    lblCab.Left = 28: lblCab.Top = 78: lblCab.Width = 570: lblCab.Height = 12      ' alineada con el texto de las filas (que empieza tras la casilla)
     lblCab.Font.Name = "Courier New": lblCab.Font.Size = 8: lblCab.Font.Bold = True
     lblCab.Caption = Linea("UNION / TARUGO", "PIEZA 1", "PIEZA 2", "POSICION (mm)", "ESTADO")
     Set fraLista = Me.Controls.Add("Forms.Frame.1", "fraLista", True)
-    fraLista.Left = 12: fraLista.Top = 92: fraLista.Width = 620: fraLista.Height = 196
+    fraLista.Left = 12: fraLista.Top = 92: fraLista.Width = 586: fraLista.Height = 196
     fraLista.Caption = ""
     fraLista.ScrollBars = 2          ' fmScrollBarsVertical
     fraLista.ControlTipText = "Clic: marca/desmarca. Mayus+clic: marca un rango. Ctrl+A: marca todos. Los marcados se resaltan en el 3D."
+    ' desplazamiento: la rueda del raton no funciona en un marco de VBA; barra lateral, estos botones y Re Pag / Av Pag
+    Set btnIni = NuevoBoton("btnIni", ChrW(9650) & ChrW(9650), 602, 92, 30, 24, "Ir al principio de la lista")
+    Set btnSube = NuevoBoton("btnSube", ChrW(9650), 602, 120, 30, 24, "Subir 5 filas (tambien Re Pag con una fila seleccionada)")
+    Set btnBaja = NuevoBoton("btnBaja", ChrW(9660), 602, 236, 30, 24, "Bajar 5 filas (tambien Av Pag con una fila seleccionada)")
+    Set btnFin = NuevoBoton("btnFin", ChrW(9660) & ChrW(9660), 602, 264, 30, 24, "Ir al final de la lista")
     ' fila de marcado, justo debajo de la lista
     Set btnMarcarTodos = NuevoBoton("btnMarcarTodos", "MARCAR TODOS", 12, 294, 108, 24, "Marca todos los tarugos de la lista")
     Set btnDesmarcarTodos = NuevoBoton("btnDesmarcarTodos", "DESMARCAR TODOS", 124, 294, 120, 24, "Quita todas las marcas (no cambia ningun tarugo)")
@@ -165,7 +174,7 @@ Private Sub ConstruyeFilas()
     For i = 0 To NFlat - 1
         Set chks(i) = fraLista.Controls.Add("Forms.CheckBox.1", "chkF" & i, True)
         With chks(i)
-            .Left = 2: .Top = i * ALTO_FILA: .Width = 580: .Height = ALTO_FILA
+            .Left = 2: .Top = i * ALTO_FILA: .Width = 550: .Height = ALTO_FILA
             .Font.Name = "Courier New": .Font.Size = 8
             .BackStyle = 1
             .WordWrap = False
@@ -371,7 +380,41 @@ Public Sub FilaTecla(ByVal idx As Long, ByRef KeyCode As MSForms.ReturnInteger, 
     If KeyCode = 65 And (Shift And 2) <> 0 Then
         KeyCode = 0
         MarcaSegun 1
+    ElseIf KeyCode = 33 Then          ' Re Pag
+        KeyCode = 0
+        Desplaza -10 * ALTO_FILA
+    ElseIf KeyCode = 34 Then          ' Av Pag
+        KeyCode = 0
+        Desplaza 10 * ALTO_FILA
     End If
+End Sub
+
+' Mueve la lista delta puntos (negativo = hacia arriba); delta muy grande = al principio / al final
+Private Sub Desplaza(ByVal delta As Single)
+    Dim t As Single, maxT As Single
+    On Error Resume Next
+    maxT = fraLista.ScrollHeight - fraLista.InsideHeight
+    If maxT < 0 Then maxT = 0
+    t = fraLista.ScrollTop + delta
+    If t < 0 Then t = 0
+    If t > maxT Then t = maxT
+    fraLista.ScrollTop = t
+End Sub
+
+Private Sub btnIni_Click()
+    Desplaza -1000000
+End Sub
+
+Private Sub btnSube_Click()
+    Desplaza -5 * ALTO_FILA
+End Sub
+
+Private Sub btnBaja_Click()
+    Desplaza 5 * ALTO_FILA
+End Sub
+
+Private Sub btnFin_Click()
+    Desplaza 1000000
 End Sub
 
 Private Sub btnMarcarTodos_Click()
