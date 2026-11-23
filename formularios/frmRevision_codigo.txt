@@ -97,13 +97,10 @@ Public Sub Refresca()
         lstTarugos.List(i, 2) = Piezas(Uniones(u).P2).Nombre
         lstTarugos.List(i, 3) = Format(p.X * 1000, "0.0") & " ; " & Format(p.Y * 1000, "0.0") & " ; " & Format(p.Z * 1000, "0.0")
         If Uniones(u).SinMat(k) Then
-            If EsCerca(u, k) Then
-                lstTarugos.List(i, 4) = "CERCA DE HECHO"
-            Else
-                lstTarugos.List(i, 4) = "SIN MATERIAL"
-            End If
+            lstTarugos.List(i, 4) = "SIN MATERIAL"
         ElseIf Not Uniones(u).Activo(k) Then
-            lstTarugos.List(i, 4) = "ELIMINADO"
+            ' eliminado: si empezo asi por haber un agujero ya hecho cerca, se dice (se puede restaurar)
+            If EsCerca(u, k) Then lstTarugos.List(i, 4) = "CERCA DE HECHO" Else lstTarugos.List(i, 4) = "ELIMINADO"
         ElseIf TextoHecho(u, k) <> "" Then
             lstTarugos.List(i, 4) = TextoHecho(u, k)
         ElseIf Uniones(u).Estado = "VALIDA" Then
@@ -344,7 +341,7 @@ Private Sub btnRestaurar_Click()
         lblInfo.Caption = "No hay tarugos eliminados marcados: marca con la casilla los que quieras recuperar."
         Exit Sub
     End If
-    TerminaAccion n & " tarugo(s) restaurado(s)." & IIf(nSin > 0, " " & nSin & " sin material (hueco) o cerca de un agujero ya hecho no se restauran.", "")
+    TerminaAccion n & " tarugo(s) restaurado(s)." & IIf(nSin > 0, " " & nSin & " sin material (hueco) no se restauran.", "")
 End Sub
 
 Private Sub btnEliminarUnion_Click()

@@ -7,12 +7,18 @@ Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Eje
 ' quedar un taladro aislado en una pieza.
 '==============================================================================
 
+' True si el tarugo empieza eliminado por haber un agujero ya hecho cerca (se restaura a mano)
+Private Function EsCerca(ByVal u As Long, ByVal k As Long) As Boolean
+    On Error Resume Next
+    EsCerca = Uniones(u).Cerca(k)
+End Function
+
 ' Las uniones dudosas empiezan DESACTIVADAS: hay que revisarlas y restaurarlas.
 Public Sub EstadoInicial()
     Dim u As Long, k As Long
     For u = 0 To NUniones - 1
         For k = 0 To Uniones(u).NT - 1
-            Uniones(u).Activo(k) = (Uniones(u).Estado = "VALIDA") And Not Uniones(u).SinMat(k)
+            Uniones(u).Activo(k) = (Uniones(u).Estado = "VALIDA") And Not Uniones(u).SinMat(k) And Not EsCerca(u, k)
         Next k
     Next u
 End Sub
@@ -26,7 +32,7 @@ Public Sub RestauraUnion(ByVal u As Long)
     Dim k As Long
     ' los tarugos sin material (hueco) no se reactivan con "restaurar union" / "aceptar todos"
     For k = 0 To Uniones(u).NT - 1
-        If Not Uniones(u).SinMat(k) Then Uniones(u).Activo(k) = True
+        If Not Uniones(u).SinMat(k) And Not EsCerca(u, k) Then Uniones(u).Activo(k) = True
     Next k
 End Sub
 

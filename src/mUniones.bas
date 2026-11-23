@@ -32,7 +32,7 @@ Public Type TUnion
     Activo() As Boolean
     SinMat() As Boolean      ' tarugo descartado por caer en un hueco de una de las piezas (mHuecos)
     Hecho() As Long          ' por tarugo: 0 = nada hecho, 1 = agujero ya en la pieza 1, 2 = ya en la pieza 2, 3 = en las dos
-    Cerca() As Boolean       ' tarugo descartado por haber un agujero ya hecho a menos de la separacion minima (tambien marca SinMat)
+    Cerca() As Boolean       ' tarugo que empieza eliminado por haber un agujero ya hecho a menos de la separacion minima (restaurable)
 End Type
 
 Public Uniones() As TUnion
@@ -356,8 +356,7 @@ Private Sub MarcaHechos(un As TUnion, fa As SldWorks.Face2, fb As SldWorks.Face2
     For k = 0 To un.NT - 1
         If un.Hecho(k) = 0 And Not un.SinMat(k) Then
             If AgujeroCerca(fa, un.Pos(k), dMin) Or AgujeroCerca(fb, un.Pos(k), dMin) Then
-                un.Cerca(k) = True
-                un.SinMat(k) = True
+                un.Cerca(k) = True            ' empieza ELIMINADO pero se puede RESTAURAR (no es SinMat)
                 un.Activo(k) = False
                 If txt <> "" Then txt = txt & ", "
                 txt = txt & (k + 1)
