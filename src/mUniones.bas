@@ -32,6 +32,7 @@ Public Type TUnion
     Activo() As Boolean
     SinMat() As Boolean      ' tarugo descartado por caer en un hueco de una de las piezas (mHuecos)
     Hecho() As Long          ' por tarugo: 0 = nada hecho, 1 = agujero ya en la pieza 1, 2 = ya en la pieza 2, 3 = en las dos
+    Cerca() As Boolean       ' tarugo descartado por haber un agujero ya hecho a menos de la separacion minima (tambien marca SinMat)
 End Type
 
 Public Uniones() As TUnion
@@ -345,11 +346,39 @@ Private Sub MarcaHechos(un As TUnion, fa As SldWorks.Face2, fb As SldWorks.Face2
             un.Hecho(k) = IIf(hb, 1, 0) + IIf(ha, 2, 0)
         End If
     Next k
+
+    ' Un agujero de tarugo ya hecho a menos de la separacion minima (50 mm por defecto) de un
+    ' tarugo NUEVO: ese tarugo se descarta (en las dos piezas), como si cayera en un hueco.
+    ' Los que coinciden con un agujero hecho (Hecho > 0) se quedan: se saltan al mecanizar.
+    ReDim un.Cerca(0 To un.NT - 1)
+    Dim dMin As Double, txt As String
+    dMin = Cfg.SepMinFactor * Cfg.Diametro * MM - 0.000001
+    For k = 0 To un.NT - 1
+        If un.Hecho(k) = 0 And Not un.SinMat(k) Then
+            If AgujeroCerca(fa, un.Pos(k), dMin) Or AgujeroCerca(fb, un.Pos(k), dMin) Then
+                un.Cerca(k) = True
+                un.SinMat(k) = True
+                un.Activo(k) = False
+                If txt <> "" Then txt = txt & ", "
+                txt = txt & (k + 1)
+            End If
+        End If
+    Next k
+    If txt <> "" Then
+        un.Motivo = AnadeMotivo(un.Motivo, "tarugo(s) " & txt & " descartado(s): hay un agujero ya hecho a menos de " & _
+                                Format(Cfg.SepMinFactor * Cfg.Diametro, "0") & " mm")
+    End If
 End Sub
 
 ' True si la cara ya tiene un agujero circular del diametro del tarugo centrado en pp
-' (p. ej. los agujeros de tarugo que el mueble ya trae). Solo se miran los bucles interiores.
+' (p. ej. los agujeros de tarugo que el mueble ya trae).
 Public Function AgujeroEnCara(f As SldWorks.Face2, pp As TV3) As Boolean
+    AgujeroEnCara = AgujeroCerca(f, pp, 0.0003)
+End Function
+
+' True si la cara tiene un agujero circular del diametro del tarugo con el centro a menos
+' de dMax (m) de pp. Solo se miran los bucles interiores.
+Private Function AgujeroCerca(f As SldWorks.Face2, pp As TV3, ByVal dMax As Double) As Boolean
     Dim lp As SldWorks.Loop2, edgs As Variant, k As Long, e As SldWorks.Edge
     Dim cv As SldWorks.Curve, cp As Variant
     On Error Resume Next
@@ -366,8 +395,8 @@ Public Function AgujeroEnCara(f As SldWorks.Face2, pp As TV3) As Boolean
                             cp = cv.CircleParams                  ' centro(0..2), eje(3..5), radio(6)
                             If IsArray(cp) Then
                                 If Abs(cp(6) - Cfg.Diametro * MM / 2) < 0.00005 Then
-                                    If VLen(V3(cp(0) - pp.X, cp(1) - pp.Y, cp(2) - pp.Z)) < 0.0003 Then
-                                        AgujeroEnCara = True
+                                    If VLen(V3(cp(0) - pp.X, cp(1) - pp.Y, cp(2) - pp.Z)) < dMax Then
+                                        AgujeroCerca = True
                                         Exit Function
                                     End If
                                 End If
