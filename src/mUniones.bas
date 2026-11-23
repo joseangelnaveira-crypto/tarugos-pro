@@ -120,13 +120,19 @@ Private Function VerticesCara(f As SldWorks.Face2, pts() As TV3, ByRef n As Long
     For k = 0 To UBound(edgs)
         Set e = edgs(k)
         If e.GetCurve Is Nothing Then motivoVert = "arista sin curva": Exit Function
-        If e.GetCurve.Identity <> 3001 Then motivoVert = "arista no recta (tipo " & e.GetCurve.Identity & ")": Exit Function
         Set v1 = e.GetStartVertex
         Set v2 = e.GetEndVertex
-        If v1 Is Nothing Or v2 Is Nothing Then motivoVert = "arista sin vertices": Exit Function
-        pts(n) = VFromArr(v1.GetPoint): n = n + 1
-        pts(n) = VFromArr(v2.GetPoint): n = n + 1
+        If v1 Is Nothing Or v2 Is Nothing Then
+            ' una arista CURVA cerrada (circulo) no tiene vertices: se ignora; una recta si debe tenerlos
+            If e.GetCurve.Identity = 3001 Then motivoVert = "arista sin vertices": Exit Function
+        Else
+            ' Las aristas curvas (esquinas redondeadas, "Redondeo") se sustituyen por la cuerda
+            ' entre sus extremos: el contorno queda algo mas pequeno que el real (conservador).
+            pts(n) = VFromArr(v1.GetPoint): n = n + 1
+            pts(n) = VFromArr(v2.GetPoint): n = n + 1
+        End If
     Next k
+    If n < 3 Then motivoVert = "menos de 3 vertices": Exit Function
     VerticesCara = True
 End Function
 
@@ -148,9 +154,12 @@ Private Sub AnalizaContacto(a As Long, i As Long, b As Long, j As Long, ByVal ga
 
     ' ---- poligonos en el plano de contacto ----
     Dim pa() As TV3, na As Long, pb() As TV3, nb As Long
-    If Not VerticesCara(ca.Ref, pa, na) Or Not VerticesCara(cb.Ref, pb, nb) Then
+    Dim okA As Boolean, okB As Boolean, mA As String, mB As String
+    okA = VerticesCara(ca.Ref, pa, na): mA = motivoVert
+    okB = VerticesCara(cb.Ref, pb, nb): mB = motivoVert
+    If Not okA Or Not okB Then
         un.P1 = a: un.P2 = b: un.Tipo = "OTRA": un.Estado = "DUDOSA"
-        un.Motivo = "No se pudieron leer los vertices de la cara (" & motivoVert & "): requiere analisis completo"
+        un.Motivo = "No se pudieron leer los vertices de la cara (" & mA & IIf(mA <> "" And mB <> "", " / ", "") & mB & "): requiere analisis completo"
         AnadeUnion un
         Exit Sub
     End If

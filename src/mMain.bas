@@ -76,6 +76,7 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
         modo = "MANUAL"
         FiltraPorPiezas nombres
     End If
+    EscribeUniones md
     If NUniones = 0 Then
         MsgBox "No se han encontrado uniones (modo " & modo & ").", vbInformation, "Tarugos"
         Exit Sub
@@ -144,3 +145,33 @@ Private Function CuerpoDeSeleccion(sm As SldWorks.SelectionMgr, ByVal i As Long)
         Set CuerpoDeSeleccion = f.GetBody
     End If
 End Function
+
+' Lista TODAS las uniones (tambien las dudosas o descartadas, que pueden no tener tarugos)
+' con su motivo, en Tarugos_Uniones.txt junto al documento.
+Private Sub EscribeUniones(md As SldWorks.ModelDoc2)
+    Dim carpeta As String, ruta As String, ff As Integer, i As Long
+    carpeta = Environ("TEMP")
+    If md.GetPathName <> "" Then carpeta = Left(md.GetPathName, InStrRev(md.GetPathName, "\") - 1)
+    ruta = carpeta & "\Tarugos_Uniones.txt"
+    On Error GoTo fallo
+    ff = FreeFile
+    Open ruta For Output As #ff
+    Print #ff, "TARUGOS PRO - uniones detectadas   " & Format(Now, "yyyy-mm-dd hh:nn:ss") & "   " & md.GetTitle
+    For i = 0 To NPiezas - 1
+        Print #ff, "PIEZA [" & i & "] " & Piezas(i).Nombre & "  " & Piezas(i).Estado & _
+                   IIf(Piezas(i).EsTablero, "  tablero, espesor " & Format(Piezas(i).Espesor * 1000, "0.0") & " mm", "") & _
+                   IIf(Piezas(i).Aviso <> "", "  AVISO: " & Piezas(i).Aviso, "")
+    Next i
+    For i = 0 To NUniones - 1
+        With Uniones(i)
+            Print #ff, .Id & "  " & .Estado & "  " & .Tipo & "  tarugos=" & .NT & "  L=" & Format(.L * 1000, "0.0") & _
+                       " W=" & Format(.W * 1000, "0.0") & "  " & Piezas(.P1).Nombre & " / " & Piezas(.P2).Nombre
+            If .Motivo <> "" Then Print #ff, "      MOTIVO: " & .Motivo
+        End With
+    Next i
+    Close #ff
+    Exit Sub
+fallo:
+    On Error Resume Next
+    Close #ff
+End Sub
