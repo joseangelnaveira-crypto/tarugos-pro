@@ -39,12 +39,10 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
             Set c = Nothing
             If md.GetType = swDocPART Then
                 ' pieza multicuerpo: se seleccionan CUERPOS (en el arbol o pinchando en el modelo)
-                If sm.GetSelectedObjectType3(i, -1) = swSelSOLIDBODIES Then
-                    Dim cuerpoSel As SldWorks.Body2
-                    Set cuerpoSel = sm.GetSelectedObject6(i, -1)
-                    If Not cuerpoSel Is Nothing Then
-                        If Not YaEsta(nombres, cuerpoSel.Name) Then nombres.Add cuerpoSel.Name
-                    End If
+                Dim cuerpoSel As SldWorks.Body2
+                Set cuerpoSel = CuerpoDeSeleccion(sm, i)
+                If Not cuerpoSel Is Nothing Then
+                    If Not YaEsta(nombres, cuerpoSel.Name) Then nombres.Add cuerpoSel.Name
                 End If
             ElseIf sm.GetSelectedObjectType3(i, -1) = swSelCOMPONENTS Then
                 Set c = sm.GetSelectedObject6(i, -1)
@@ -129,4 +127,20 @@ Private Function YaEsta(c As Collection, ByVal s As String) As Boolean
     For Each v In c
         If CStr(v) = s Then YaEsta = True: Exit Function
     Next v
+End Function
+
+' Cuerpo solido al que pertenece lo seleccionado en una PIEZA: el propio cuerpo (arbol)
+' o el cuerpo de la cara pinchada en el modelo.
+Private Function CuerpoDeSeleccion(sm As SldWorks.SelectionMgr, ByVal i As Long) As SldWorks.Body2
+    Dim t As Long, o As Object, f As SldWorks.Face2
+    On Error Resume Next
+    t = sm.GetSelectedObjectType3(i, -1)
+    Set o = sm.GetSelectedObject6(i, -1)
+    If o Is Nothing Then Exit Function
+    If t = swSelSOLIDBODIES Then
+        Set CuerpoDeSeleccion = o
+    ElseIf t = swSelFACES Then
+        Set f = o
+        Set CuerpoDeSeleccion = f.GetBody
+    End If
 End Function

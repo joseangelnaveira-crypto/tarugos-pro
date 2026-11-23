@@ -75,6 +75,9 @@ End Sub
 Private Function EstaEn(c As Collection, ByVal s As String) As Boolean
     Dim v As Variant
     For Each v In c
+        ' una pieza cuenta si es la seleccionada o esta DENTRO de un subensamblaje seleccionado
+        ' (Name2 de una pieza anidada = "sub-1/pieza-1")
         If CStr(v) = s Then EstaEn = True: Exit Function
+        If Left(s, Len(CStr(v)) + 1) = CStr(v) & "/" Then EstaEn = True: Exit Function
     Next v
 End Function
