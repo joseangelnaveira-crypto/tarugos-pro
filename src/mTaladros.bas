@@ -606,14 +606,21 @@ Private Function EnLista(l() As Long, ByVal n As Long, ByVal v As Long) As Boole
 End Function
 
 ' Cara plana de la pieza (espacio de la pieza) con normal nn que contiene el punto pp
+' Primero se busca la cara con tolerancia estricta; si no aparece, otra pasada mas holgada
+' (la cara puede quedar partida o con la caja algo menor que el punto, p. ej. junto a un agujero).
 Private Function BuscaCara(pmd As SldWorks.ModelDoc2, pp As TV3, nn As TV3, ByVal pieza As Long) As SldWorks.Face2
+    Set BuscaCara = BuscaCaraTol(pmd, pp, nn, pieza, 0.0002)
+    If BuscaCara Is Nothing Then Set BuscaCara = BuscaCaraTol(pmd, pp, nn, pieza, 0.003)
+End Function
+
+Private Function BuscaCaraTol(pmd As SldWorks.ModelDoc2, pp As TV3, nn As TV3, ByVal pieza As Long, ByVal tolBox As Double) As SldWorks.Face2
     Dim bodies As Variant
     bodies = CType2(pmd).GetBodies2(swSolidBody, False)
     If IsEmpty(bodies) Then Exit Function
     Dim b As Long, f As SldWorks.Face2, bd As SldWorks.Body2
     Dim s As SldWorks.Surface, nf As TV3, pf As TV3, v As Variant, bx As Variant
     Dim tolP As Double
-    tolP = MaxD(0.0002, Cfg.Tol * MM + 0.00001)      ' las piezas pueden estar separadas hasta la holgura configurada
+    tolP = MaxD(tolBox, Cfg.Tol * MM + 0.00001)      ' las piezas pueden estar separadas hasta la holgura configurada
     For b = 0 To UBound(bodies)
         Set bd = bodies(b)
         ' pieza multicuerpo: solo las caras del cuerpo que ES la pieza (dos cuerpos pueden tener
@@ -630,10 +637,10 @@ Private Function BuscaCara(pmd As SldWorks.ModelDoc2, pp As TV3, nn As TV3, ByVa
                     pf = V3(v(3), v(4), v(5))
                     If Abs(VDot(VSub(pf, pp), nn)) < tolP Then
                         bx = f.GetBox
-                        If pp.X >= bx(0) - 0.0002 And pp.X <= bx(3) + 0.0002 And _
-                           pp.Y >= bx(1) - 0.0002 And pp.Y <= bx(4) + 0.0002 And _
-                           pp.Z >= bx(2) - 0.0002 And pp.Z <= bx(5) + 0.0002 Then
-                            Set BuscaCara = f
+                        If pp.X >= bx(0) - tolBox And pp.X <= bx(3) + tolBox And _
+                           pp.Y >= bx(1) - tolBox And pp.Y <= bx(4) + tolBox And _
+                           pp.Z >= bx(2) - tolBox And pp.Z <= bx(5) + tolBox Then
+                            Set BuscaCaraTol = f
                             Exit Function
                         End If
                     End If
