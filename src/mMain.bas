@@ -43,7 +43,7 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVa
     Dim i As Long, n As Long, c As SldWorks.Component2
     If manual And recalc Then
         ' recalculo desde la ventana de revision: se reutilizan las piezas ya elegidas
-        If ultimosNombres Is Nothing Then frmRevision.Hide: Exit Sub
+        If ultimosNombres Is Nothing Then Exit Sub
         Set nombres = ultimosNombres
     ElseIf manual Then
         n = sm.GetSelectedObjectCount2(-1)
@@ -81,10 +81,10 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVa
         Set asm = md
         AnalizaPiezas swApp, asm
     End If
-    If mOptim.Cancelado Then If recalc Then frmRevision.Hide
+    If mOptim.Cancelado Then frmRevision.SinResultados
     If mOptim.Cancelado Then MsgBox "Analisis cancelado. No se ha modificado nada.", vbInformation, "Tarugos": Exit Sub
     DetectaUniones
-    If mOptim.Cancelado Then If recalc Then frmRevision.Hide
+    If mOptim.Cancelado Then frmRevision.SinResultados
     If mOptim.Cancelado Then MsgBox "Analisis cancelado. No se ha modificado nada.", vbInformation, "Tarugos": Exit Sub
     Dim modo As String
     modo = "AUTOMATICO"
@@ -94,7 +94,7 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVa
     End If
     EscribeUniones md
     If NUniones = 0 Then
-        If recalc Then frmRevision.Hide
+        frmRevision.SinResultados
         MsgBox "No se han encontrado uniones (modo " & modo & ").", vbInformation, "Tarugos"
         Exit Sub
     End If
@@ -109,6 +109,7 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVa
     Set Formulario = frmRevision
     frmRevision.Caption = "Tarugos - Revision (" & modo & ")"
     frmRevision.CargaParametros
+    frmRevision.HabilitaRevision True
     frmRevision.Refresca
     frmRevision.Show vbModeless
     DibujaTodo
@@ -127,10 +128,11 @@ Public Sub Tarugos_Principal()
     If swApp.ActiveDoc Is Nothing Then MsgBox "Abre un ensamblaje.", vbExclamation, "Tarugos": Exit Sub
     If swApp.ActiveDoc.GetType <> swDocASSEMBLY And swApp.ActiveDoc.GetType <> swDocPART Then MsgBox "El documento activo debe ser un ensamblaje o una pieza multicuerpo.", vbExclamation, "Tarugos": Exit Sub
     CfgPorDefecto
-    ' Ventana NO modal: asi se puede seleccionar piezas con el raton mientras esta abierta.
-    ' Los botones llaman directamente a Fase3_Revisar / Fase6_Deshacer.
-    frmPrincipal.Reinicia
-    frmPrincipal.Show vbModeless
+    ' Ventana unica (parametros + modo + lista), NO modal: asi se puede seleccionar piezas con el
+    ' raton mientras esta abierta. Los botones llaman a Fase3_Revisar / Recalcula / Fase6_Deshacer.
+    mPreview.Limpia
+    frmRevision.Inicia
+    frmRevision.Show vbModeless
 End Sub
 
 ' Numero de cuerpos solidos visibles de una pieza

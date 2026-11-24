@@ -1,4 +1,16 @@
 Option Explicit
+
+' Para colocar la ventana junto a la de SolidWorks (posicion y tamano de su ventana)
+Private Type RECTW
+    Left As Long
+    Top As Long
+    Right As Long
+    Bottom As Long
+End Type
+Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, lpRect As RECTW) As Long
+Private Declare PtrSafe Function GetDC Lib "user32" (ByVal hWnd As LongPtr) As LongPtr
+Private Declare PtrSafe Function ReleaseDC Lib "user32" (ByVal hWnd As LongPtr, ByVal hdc As LongPtr) As Long
+Private Declare PtrSafe Function GetDeviceCaps Lib "gdi32" (ByVal hdc As LongPtr, ByVal nIndex As Long) As Long
 '==============================================================================
 ' frmRevision - FASE 3: revision de los tarugos propuestos (formulario NO modal,
 ' para poder seguir seleccionando tarugos en el modelo 3D).
@@ -50,6 +62,14 @@ Private WithEvents btnRestaurarUnion As MSForms.CommandButton
 Private WithEvents btnCancelar As MSForms.CommandButton
 Private WithEvents btnMecanizar As MSForms.CommandButton
 Private WithEvents btnRecalcular As MSForms.CommandButton
+Private WithEvents btnAuto As MSForms.CommandButton
+Private WithEvents btnManual As MSForms.CommandButton
+Private WithEvents btnDeshacer As MSForms.CommandButton
+Private WithEvents btnGuardar As MSForms.CommandButton
+Private WithEvents btnFabrica As MSForms.CommandButton
+Private lblAyuda As MSForms.Label
+Private esperandoSeleccion As Boolean
+Private yLeyenda As Single
 Private txtP(0 To 8) As MSForms.TextBox          ' parametros editables (panel de la derecha)
 
 Private Function NuevoBoton(ByVal nombre As String, ByVal texto As String, ByVal x As Single, ByVal y As Single, _
@@ -83,80 +103,163 @@ End Function
 Private Sub NuevaLeyenda(ByVal x As Single, ByVal w As Single, ByVal texto As String)
     Dim l As MSForms.Label
     Set l = Me.Controls.Add("Forms.Label.1", "leyenda" & x, True)
-    l.Left = x: l.Top = 62: l.Width = w: l.Height = 13
+    l.Left = x: l.Top = yLeyenda: l.Width = w: l.Height = 13
     l.Caption = texto
     l.TextAlign = 2
-    l.Font.Size = 8
+    l.Font.Size = 7
     l.BackColor = ColorEstado(texto)
     l.BorderStyle = 1
 End Sub
 
 ' Los controles se crean por codigo (no hay que depender de la libreria al importar el .frm)
+' Ventana unica: modo (AUTOMATICO / MANUAL), parametros, lista y acciones, en una columna
+' pensada para ir pegada al borde izquierdo de la ventana de SolidWorks.
 Private Sub UserForm_Initialize()
     actualizando = True          ' crear controles dispara eventos: ignorarlos
     ultimoClic = -1
-    Me.Width = 854
-    Me.Height = 504
+    Me.Caption = "Tarugos Pro"
+    Me.Width = 520
+    Me.Height = 700
+    Dim q As Long, lp As MSForms.Label
+    ' --- modo ---
+    Set btnAuto = NuevoBoton("btnAuto", "AUTOMATICO", 8, 6, 120, 26, "Analiza todo el ensamblaje")
+    Set btnManual = NuevoBoton("btnManual", "MANUAL", 132, 6, 120, 26, "Analiza solo las piezas que selecciones")
+    Set btnDeshacer = NuevoBoton("btnDeshacer", "DESHACER MECANIZADO", 256, 6, 140, 26, "Deshace un mecanizado anterior")
+    Set lblAyuda = Me.Controls.Add("Forms.Label.1", "lblAyuda", True)
+    lblAyuda.Left = 8: lblAyuda.Top = 36: lblAyuda.Width = 500: lblAyuda.Height = 26: lblAyuda.Font.Size = 8
+    ' --- parametros (3 columnas x 3 filas) ---
+    Dim etq As Variant, cx As Single, cy As Single
+    etq = Array("Diametro del tarugo (mm)", "Profundidad pieza 1 (mm)", "Profundidad pieza 2 (mm)", _
+                "Distancia a los extremos (mm)", "Longitud de referencia (mm)", "Numero inicial de tarugos", _
+                "Incremento de longitud (mm)", "Incremento de tarugos", "Holgura max. entre piezas (mm)")
+    For q = 0 To 8
+        cx = 8 + (q Mod 3) * 168
+        cy = 66 + (q \ 3) * 36
+        Set lp = Me.Controls.Add("Forms.Label.1", "lP" & q, True)
+        lp.Left = cx: lp.Top = cy: lp.Width = 164: lp.Height = 12: lp.Caption = etq(q): lp.Font.Size = 7
+        Set txtP(q) = Me.Controls.Add("Forms.TextBox.1", "tP" & q, True)
+        txtP(q).Left = cx: txtP(q).Top = cy + 13: txtP(q).Width = 80: txtP(q).Height = 18
+    Next q
+    Set btnRecalcular = NuevoBoton("btnRecalcular", "RECALCULAR", 8, 176, 200, 26, "Aplica los parametros y rehace la propuesta desde cero (se pierden las ediciones hechas a mano)")
+    Set btnGuardar = NuevoBoton("btnGuardar", "Guardar ajustes", 212, 176, 140, 26)
+    Set btnFabrica = NuevoBoton("btnFabrica", "Valores de fabrica", 356, 176, 150, 26)
+    ' --- resumen y leyenda ---
     Set lblResumen = Me.Controls.Add("Forms.Label.1", "lblResumen", True)
-    lblResumen.Left = 12: lblResumen.Top = 6: lblResumen.Width = 620: lblResumen.Height = 54
-    ' leyenda de colores
-    NuevaLeyenda 12, 92, "ACTIVO"
-    NuevaLeyenda 108, 92, "YA HECHO"
-    NuevaLeyenda 204, 104, "CERCA DE HECHO"
-    NuevaLeyenda 312, 92, "ELIMINADO"
-    NuevaLeyenda 408, 100, "SIN MATERIAL"
-    NuevaLeyenda 512, 92, "FORZADO"
+    lblResumen.Left = 8: lblResumen.Top = 208: lblResumen.Width = 500: lblResumen.Height = 42: lblResumen.Font.Size = 8
+    yLeyenda = 254
+    NuevaLeyenda 8, 82, "ACTIVO"
+    NuevaLeyenda 92, 82, "YA HECHO"
+    NuevaLeyenda 176, 82, "CERCA DE HECHO"
+    NuevaLeyenda 260, 82, "ELIMINADO"
+    NuevaLeyenda 344, 82, "SIN MATERIAL"
+    NuevaLeyenda 428, 82, "FORZADO"
     Set lblCab = Me.Controls.Add("Forms.Label.1", "lblCab", True)
-    lblCab.Left = 28: lblCab.Top = 78: lblCab.Width = 570: lblCab.Height = 12      ' alineada con el texto de las filas (que empieza tras la casilla)
+    lblCab.Left = 24: lblCab.Top = 270: lblCab.Width = 450: lblCab.Height = 12      ' alineada con el texto de las filas (que empieza tras la casilla)
     lblCab.Font.Name = "Courier New": lblCab.Font.Size = 8: lblCab.Font.Bold = True
     lblCab.Caption = Linea("UNION / TARUGO", "PIEZA 1", "PIEZA 2", "POSICION (mm)", "ESTADO")
+    ' --- lista (la altura y lo que va debajo se fijan en Coloca) ---
     Set fraLista = Me.Controls.Add("Forms.Frame.1", "fraLista", True)
-    fraLista.Left = 12: fraLista.Top = 92: fraLista.Width = 586: fraLista.Height = 196
+    fraLista.Left = 8: fraLista.Top = 284: fraLista.Width = 470: fraLista.Height = 240
     fraLista.Caption = ""
     fraLista.ScrollBars = 2          ' fmScrollBarsVertical
     fraLista.ControlTipText = "Clic: marca/desmarca. Mayus+clic: marca un rango. Ctrl+A: marca todos. Los marcados se resaltan en el 3D."
     ' desplazamiento: la rueda del raton no funciona en un marco de VBA; barra lateral, estos botones y Re Pag / Av Pag
-    Set btnIni = NuevoBoton("btnIni", ChrW(9650) & ChrW(9650), 602, 92, 30, 24, "Ir al principio de la lista")
-    Set btnSube = NuevoBoton("btnSube", ChrW(9650), 602, 120, 30, 24, "Subir 5 filas (tambien Re Pag con una fila seleccionada)")
-    Set btnBaja = NuevoBoton("btnBaja", ChrW(9660), 602, 236, 30, 24, "Bajar 5 filas (tambien Av Pag con una fila seleccionada)")
-    Set btnFin = NuevoBoton("btnFin", ChrW(9660) & ChrW(9660), 602, 264, 30, 24, "Ir al final de la lista")
-    ' fila de marcado, justo debajo de la lista
-    Set btnMarcarTodos = NuevoBoton("btnMarcarTodos", "MARCAR TODOS", 12, 294, 108, 24, "Marca todos los tarugos de la lista")
-    Set btnDesmarcarTodos = NuevoBoton("btnDesmarcarTodos", "DESMARCAR TODOS", 124, 294, 120, 24, "Quita todas las marcas (no cambia ningun tarugo)")
-    Set btnMarcarEliminados = NuevoBoton("btnMarcarEliminados", "MARCAR ELIMINADOS", 248, 294, 130, 24, "Marca solo los tarugos que ya has quitado, para repasarlos en el 3D o recuperarlos")
+    Set btnIni = NuevoBoton("btnIni", ChrW(9650) & ChrW(9650), 482, 284, 28, 24, "Ir al principio de la lista")
+    Set btnSube = NuevoBoton("btnSube", ChrW(9650), 482, 310, 28, 24, "Subir 5 filas (tambien Re Pag con una fila seleccionada)")
+    Set btnBaja = NuevoBoton("btnBaja", ChrW(9660), 482, 460, 28, 24, "Bajar 5 filas (tambien Av Pag con una fila seleccionada)")
+    Set btnFin = NuevoBoton("btnFin", ChrW(9660) & ChrW(9660), 482, 486, 28, 24, "Ir al final de la lista")
+    Set btnMarcarTodos = NuevoBoton("btnMarcarTodos", "MARCAR TODOS", 8, 530, 104, 24, "Marca todos los tarugos de la lista")
+    Set btnDesmarcarTodos = NuevoBoton("btnDesmarcarTodos", "DESMARCAR TODOS", 116, 530, 116, 24, "Quita todas las marcas (no cambia ningun tarugo)")
+    Set btnMarcarEliminados = NuevoBoton("btnMarcarEliminados", "MARCAR ELIMINADOS", 236, 530, 128, 24, "Marca solo los tarugos que ya has quitado, para repasarlos en el 3D o recuperarlos")
     Set lblMarcados = Me.Controls.Add("Forms.Label.1", "lblMarcados", True)
-    lblMarcados.Left = 384: lblMarcados.Top = 299: lblMarcados.Width = 248: lblMarcados.Height = 18
+    lblMarcados.Left = 368: lblMarcados.Top = 530: lblMarcados.Width = 142: lblMarcados.Height = 24
     lblMarcados.TextAlign = 3        ' fmTextAlignRight
-    lblMarcados.Font.Bold = True
+    lblMarcados.Font.Bold = True: lblMarcados.Font.Size = 7
     Set lblInfo = Me.Controls.Add("Forms.Label.1", "lblInfo", True)
-    lblInfo.Left = 12: lblInfo.Top = 322: lblInfo.Width = 620: lblInfo.Height = 30
+    lblInfo.Left = 8: lblInfo.Top = 560: lblInfo.Width = 500: lblInfo.Height = 26: lblInfo.Font.Size = 8
     lblInfo.ForeColor = 192
-    Set btnAceptarTodos = NuevoBoton("btnAceptarTodos", "ACEPTAR TODOS", 12, 358, 200, 28, "Reactiva todos los tarugos de las uniones validas")
-    Set btnEliminar = NuevoBoton("btnEliminar", "QUITAR MARCADOS", 218, 358, 204, 28, "Quita (no se taladran) todos los tarugos marcados")
-    Set btnRestaurar = NuevoBoton("btnRestaurar", "RESTAURAR MARCADOS", 428, 358, 204, 28, "Vuelve a activar los tarugos marcados")
-    Set btnEliminarUnion = NuevoBoton("btnEliminarUnion", "QUITAR UNION COMPLETA", 12, 392, 310, 28, "Quita todos los tarugos de las uniones a las que pertenece algun marcado")
-    Set btnRestaurarUnion = NuevoBoton("btnRestaurarUnion", "RESTAURAR UNION COMPLETA", 326, 392, 306, 28, "Reactiva todos los tarugos de las uniones a las que pertenece algun marcado")
-    Set btnCancelar = NuevoBoton("btnCancelar", "CANCELAR", 12, 430, 200, 30)
-    Set btnMecanizar = NuevoBoton("btnMecanizar", "ACEPTAR Y MECANIZAR", 326, 430, 306, 30)
-    ' panel de parametros (a la derecha): cambiar un valor y pulsar RECALCULAR rehace la propuesta
-    Dim etq As Variant, q As Long, lp As MSForms.Label
-    etq = Array("Diametro del tarugo (mm)", "Profundidad pieza 1 (mm)", "Profundidad pieza 2 (mm)", _
-                "Distancia a los extremos (mm)", "Longitud de referencia (mm)", "Numero inicial de tarugos", _
-                "Incremento de longitud (mm)", "Incremento de tarugos", "Holgura max. entre piezas (mm)")
-    Set lp = Me.Controls.Add("Forms.Label.1", "lblParam", True)
-    lp.Left = 650: lp.Top = 6: lp.Width = 190: lp.Height = 14: lp.Caption = "PARAMETROS": lp.Font.Bold = True
-    For q = 0 To 8
-        Set lp = Me.Controls.Add("Forms.Label.1", "lP" & q, True)
-        lp.Left = 650: lp.Top = 24 + q * 36: lp.Width = 190: lp.Height = 13: lp.Caption = etq(q): lp.Font.Size = 8
-        Set txtP(q) = Me.Controls.Add("Forms.TextBox.1", "tP" & q, True)
-        txtP(q).Left = 650: txtP(q).Top = 38 + q * 36: txtP(q).Width = 90: txtP(q).Height = 18
-    Next q
-    Set btnRecalcular = NuevoBoton("btnRecalcular", "RECALCULAR", 650, 356, 190, 32, "Aplica los parametros y rehace la propuesta desde cero (se pierden las ediciones hechas a mano)")
-    Set lp = Me.Controls.Add("Forms.Label.1", "lblAyudaRec", True)
-    lp.Left = 650: lp.Top = 394: lp.Width = 190: lp.Height = 60: lp.Font.Size = 8
-    lp.Caption = "Cambia un valor y pulsa RECALCULAR para ver como quedan los tarugos. Empieza de cero: se pierden los quitados a mano."
+    Set btnAceptarTodos = NuevoBoton("btnAceptarTodos", "ACEPTAR TODOS", 8, 590, 160, 26, "Reactiva todos los tarugos de las uniones validas")
+    Set btnEliminar = NuevoBoton("btnEliminar", "QUITAR MARCADOS", 172, 590, 166, 26, "Quita (no se taladran) todos los tarugos marcados")
+    Set btnRestaurar = NuevoBoton("btnRestaurar", "RESTAURAR MARCADOS", 342, 590, 168, 26, "Vuelve a activar los tarugos marcados")
+    Set btnEliminarUnion = NuevoBoton("btnEliminarUnion", "QUITAR UNION COMPLETA", 8, 620, 250, 26, "Quita todos los tarugos de las uniones a las que pertenece algun marcado")
+    Set btnRestaurarUnion = NuevoBoton("btnRestaurarUnion", "RESTAURAR UNION COMPLETA", 262, 620, 248, 26, "Reactiva todos los tarugos de las uniones a las que pertenece algun marcado")
+    Set btnCancelar = NuevoBoton("btnCancelar", "CANCELAR", 8, 652, 160, 28)
+    Set btnMecanizar = NuevoBoton("btnMecanizar", "ACEPTAR Y MECANIZAR", 172, 652, 338, 28)
     CargaParametros
     actualizando = False
+End Sub
+
+' Pone la ventana al borde izquierdo de la ventana de SolidWorks, con su altura, y reparte la
+' altura sobrante a la lista. Si la API de la ventana falla se queda con el tamano por defecto.
+Private Sub Coloca()
+    Dim hLista As Single, ah As Single, fx As Single, fy As Single
+    hLista = 240
+    On Error Resume Next
+    Dim fr As Object, hw As LongPtr, rc As RECTW, dpi As Long, dc As LongPtr, pt As Double
+    Set fr = Application.SldWorks.Frame
+    hw = fr.GetHWnd
+    If hw <> 0 Then
+        If GetWindowRect(hw, rc) <> 0 Then
+            dc = GetDC(0)
+            dpi = GetDeviceCaps(dc, 88)              ' LOGPIXELSX
+            ReleaseDC 0, dc
+            If dpi <= 0 Then dpi = 96
+            pt = 72 / dpi                            ' puntos por pixel
+            fx = rc.Left * pt: fy = rc.Top * pt
+            ' altura util disponible (puntos) y la lista se lleva lo que sobra
+            ah = (rc.Bottom - rc.Top) * pt - (Me.Height - Me.InsideHeight) - 12
+            If ah > 0 Then hLista = 240 + (ah - 690)
+        End If
+    End If
+    On Error GoTo 0
+    If hLista < 110 Then hLista = 110
+    If hLista > 460 Then hLista = 460
+    Dim d As Single, c As Control
+    d = hLista - 240
+    fraLista.Height = hLista
+    For Each c In Me.Controls
+        If c.Top >= 520 And c.Name <> "fraLista" Then c.Top = c.Top + d
+    Next c
+    btnBaja.Top = 284 + hLista - 50: btnFin.Top = 284 + hLista - 24
+    Me.Height = (Me.Height - Me.InsideHeight) + 690 + d
+    Me.StartUpPosition = 0
+    Me.Left = fx
+    Me.Top = fy
+End Sub
+
+' Estado inicial de la ventana unica (al lanzar la macro)
+Public Sub Inicia()
+    esperandoSeleccion = False
+    CargaParametros
+    On Error Resume Next
+    btnManual.Caption = "MANUAL"
+    lblAyuda.Caption = "AUTOMATICO: analiza todo el ensamblaje.  MANUAL: pulsa MANUAL, selecciona las piezas y pulsa CONTINUAR." & vbCrLf & _
+                       "Cambia un parametro y pulsa RECALCULAR para ver otra propuesta. No se taladra nada sin tu confirmacion."
+    Coloca
+    SinResultados
+End Sub
+
+' Sin propuesta (inicio, o el analisis no ha encontrado uniones): lista vacia y acciones desactivadas
+Public Sub SinResultados()
+    Dim i As Long
+    On Error Resume Next
+    For i = 0 To nFilas - 1
+        fraLista.Controls.Remove "chkF" & i
+    Next i
+    Erase chks: Erase filas
+    nFilas = 0
+    On Error GoTo 0
+    lblResumen.Caption = ""
+    lblMarcados.Caption = ""
+    lblInfo.Caption = ""
+    HabilitaRevision False
+End Sub
+
+Public Sub HabilitaRevision(ByVal v As Boolean)
+    btnRecalcular.Enabled = v
+    btnMarcarTodos.Enabled = v: btnDesmarcarTodos.Enabled = v: btnMarcarEliminados.Enabled = v
+    btnAceptarTodos.Enabled = v: btnEliminar.Enabled = v: btnRestaurar.Enabled = v
+    btnEliminarUnion.Enabled = v: btnRestaurarUnion.Enabled = v: btnMecanizar.Enabled = v
 End Sub
 
 ' Texto de una fila: columnas de ancho fijo (tipografia de ancho fijo)
@@ -166,7 +269,7 @@ Private Function Cola(ByVal s As String, ByVal n As Long) As String
 End Function
 
 Private Function Linea(ByVal c1 As String, ByVal c2 As String, ByVal c3 As String, ByVal c4 As String, ByVal c5 As String) As String
-    Linea = Cola(c1, 17) & Cola(c2, 17) & Cola(c3, 17) & Cola(c4, 27) & c5
+    Linea = Cola(c1, 15) & Cola(c2, 15) & Cola(c3, 15) & Cola(c4, 25) & c5
 End Function
 
 ' Estado de un tarugo (texto)
@@ -204,22 +307,65 @@ Private Function NumP(ByVal i As Long, ByVal minimo As Double, ByRef ok As Boole
     NumP = v
 End Function
 
-Private Sub btnRecalcular_Click()
+' Lee y valida los parametros del panel; True si se han aplicado a Cfg (y guardado)
+Private Function Aplica() As Boolean
     Dim ok As Boolean
     ok = True
     Dim d As Double, p1 As Double, p2 As Double, de As Double, lr As Double, ni As Double
     Dim il As Double, inn As Double, tl As Double
     d = NumP(0, 1, ok): p1 = NumP(1, 1, ok): p2 = NumP(2, 1, ok): de = NumP(3, 0, ok)
     lr = NumP(4, 1, ok): ni = NumP(5, 1, ok): il = NumP(6, 1, ok): inn = NumP(7, 0, ok): tl = NumP(8, 0.001, ok)
-    If Not ok Then MsgBox "Hay valores no validos (deben ser numeros positivos).", vbExclamation, "Tarugos": Exit Sub
-    If d > 30 Then MsgBox "El diametro parece demasiado grande (maximo 30 mm).", vbExclamation, "Tarugos": Exit Sub
-    If tl > 5 Then MsgBox "La holgura maxima entre piezas no puede pasar de 5 mm.", vbExclamation, "Tarugos": Exit Sub
+    If Not ok Then MsgBox "Hay valores no validos (deben ser numeros positivos).", vbExclamation, "Tarugos": Exit Function
+    If d > 30 Then MsgBox "El diametro parece demasiado grande (maximo 30 mm).", vbExclamation, "Tarugos": Exit Function
+    If tl > 5 Then MsgBox "La holgura maxima entre piezas no puede pasar de 5 mm.", vbExclamation, "Tarugos": Exit Function
     With Cfg
         .Diametro = d: .Prof1 = p1: .Prof2 = p2: .DistExtremos = de: .LongRef = lr
         .NInicial = CLng(ni): .IncLong = il: .IncN = CLng(inn): .Tol = tl
     End With
     CfgGuarda
+    Aplica = True
+End Function
+
+Private Sub btnRecalcular_Click()
+    If Not Aplica() Then Exit Sub
     mMain.Recalcula
+End Sub
+
+Private Sub btnAuto_Click()
+    If Not Aplica() Then Exit Sub
+    esperandoSeleccion = False
+    btnManual.Caption = "MANUAL"
+    mMain.Fase3_Revisar False
+End Sub
+
+Private Sub btnManual_Click()
+    If Not esperandoSeleccion Then
+        If Not Aplica() Then Exit Sub
+        esperandoSeleccion = True
+        btnManual.Caption = "CONTINUAR"
+        lblInfo.Caption = "Selecciona en el ensamblaje las piezas que quieres tarugar (clic en la pieza; Ctrl + clic para varias; al menos 2) y pulsa CONTINUAR."
+    Else
+        esperandoSeleccion = False
+        btnManual.Caption = "MANUAL"
+        lblInfo.Caption = ""
+        mMain.Fase3_Revisar True
+    End If
+End Sub
+
+Private Sub btnDeshacer_Click()
+    mPreview.Limpia
+    Me.Hide
+    mRecuperacion.Fase6_Deshacer
+End Sub
+
+Private Sub btnGuardar_Click()
+    If Aplica() Then MsgBox "Ajustes guardados.", vbInformation, "Tarugos"
+End Sub
+
+Private Sub btnFabrica_Click()
+    CfgRestaura
+    CfgPorDefecto
+    CargaParametros
 End Sub
 
 ' Crea (una vez) una fila con casilla por tarugo
