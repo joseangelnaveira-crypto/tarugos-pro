@@ -1,0 +1,87 @@
+Option Explicit
+'==============================================================================
+' frmProgreso - ventana de PROGRESO del mecanizado, con barra de completado y boton PARAR.
+' Formulario NO modal que muestra mTaladros; mTaladros llama a Actualiza una vez por taladro
+' (ahi se procesan los eventos, y por eso responde el boton) y consulta Parar.
+' PARAR no corta nada a medias: mTaladros termina el taladro en curso, guarda la pieza con
+' lo ya hecho y se salta el resto. Al volver a ejecutar continua (no se duplica nada).
+' Los controles se crean por codigo.
+'==============================================================================
+
+Public Parar As Boolean
+Private tMostrado As Double      ' instante en que se mostro la ventana (ver btnParar_Click)
+
+Private Const ANCHO_BARRA As Single = 340
+Private lblTitulo As MSForms.Label
+Private lblFondo As MSForms.Label
+Private lblBarra As MSForms.Label
+Private lblPct As MSForms.Label
+Private lblAviso As MSForms.Label
+Private WithEvents btnParar As MSForms.CommandButton
+
+Private Sub UserForm_Initialize()
+    Me.Caption = "Tarugos - mecanizando"
+    Me.Width = 372
+    Me.Height = 172
+    Set lblTitulo = Me.Controls.Add("Forms.Label.1", "lblTitulo", True)
+    lblTitulo.Left = 10: lblTitulo.Top = 10: lblTitulo.Width = ANCHO_BARRA: lblTitulo.Height = 16
+    lblTitulo.Font.Bold = True: lblTitulo.Caption = "Preparando..."
+    Set lblFondo = Me.Controls.Add("Forms.Label.1", "lblFondo", True)
+    lblFondo.Left = 10: lblFondo.Top = 32: lblFondo.Width = ANCHO_BARRA: lblFondo.Height = 22
+    lblFondo.BackColor = &HFFFFFF: lblFondo.BorderStyle = 1
+    Set lblBarra = Me.Controls.Add("Forms.Label.1", "lblBarra", True)
+    lblBarra.Left = 11: lblBarra.Top = 33: lblBarra.Width = 0: lblBarra.Height = 20
+    lblBarra.BackColor = RGB(60, 160, 60)
+    Set lblPct = Me.Controls.Add("Forms.Label.1", "lblPct", True)
+    lblPct.Left = 10: lblPct.Top = 58: lblPct.Width = ANCHO_BARRA: lblPct.Height = 14
+    lblPct.TextAlign = 2: lblPct.Font.Size = 8
+    Set lblAviso = Me.Controls.Add("Forms.Label.1", "lblAviso", True)
+    lblAviso.Left = 10: lblAviso.Top = 78: lblAviso.Width = ANCHO_BARRA: lblAviso.Height = 30: lblAviso.Font.Size = 8
+    lblAviso.Caption = "No toques SolidWorks mientras se mecaniza. PARAR termina el taladro en curso y guarda lo ya hecho; para continuar, vuelve a ejecutar (no se duplica nada)."
+    Set btnParar = Me.Controls.Add("Forms.CommandButton.1", "btnParar", True)
+    btnParar.Left = 110: btnParar.Top = 114: btnParar.Width = 140: btnParar.Height = 26
+    btnParar.Caption = "PARAR"
+End Sub
+
+' Muestra la ventana con la barra a cero. total = taladros que se van a procesar
+Public Sub Inicia(ByVal total As Long)
+    Parar = False
+    btnParar.Enabled = True
+    btnParar.Caption = "PARAR"
+    Actualiza 0, total, "", ""
+    Me.StartUpPosition = 2
+    Me.Show vbModeless
+    tMostrado = Timer
+    DoEvents
+End Sub
+
+' Pone la barra en hechos/total. pieza y texto se muestran bajo la barra.
+Public Sub Actualiza(ByVal hechos As Long, ByVal total As Long, ByVal pieza As String, ByVal texto As String)
+    Dim f As Double
+    If total > 0 Then f = hechos / total
+    If f > 1 Then f = 1
+    If f < 0 Then f = 0
+    lblBarra.Width = Int(f * (ANCHO_BARRA - 2))
+    If pieza <> "" Then lblTitulo.Caption = "Mecanizando: " & pieza
+    lblPct.Caption = Format(f * 100, "0") & " %   (" & hechos & " de " & total & " taladros)   " & texto
+    DoEvents                     ' deja procesar el clic en PARAR
+End Sub
+
+' Los clics en los primeros 1,5 s se ignoran: la ventana aparece justo donde estaba el boton Si de
+' la confirmacion y un doble clic o un clic rezagado la habria parado sin querer.
+Private Sub btnParar_Click()
+    If Timer - tMostrado >= 0 And Timer - tMostrado < 1.5 Then Exit Sub
+    Parar = True
+    btnParar.Enabled = False
+    btnParar.Caption = "Parando..."
+End Sub
+
+' Cerrar con la X equivale a PARAR (la macro sigue ordenadamente; la ventana la cierra mTaladros)
+Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
+    If CloseMode = 0 Then
+        Cancel = True
+        Parar = True
+        btnParar.Enabled = False
+        btnParar.Caption = "Parando..."
+    End If
+End Sub

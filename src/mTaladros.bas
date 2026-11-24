@@ -44,6 +44,13 @@ Private volValido As Boolean           ' True solo si volPrevio sigue siendo el 
 Private rapidoActivo As Boolean
 Private rapidoDoc As SldWorks.ModelDoc2
 
+' --- ventana de progreso y parada (frmProgreso) ---
+Private parado As Boolean              ' el mecanizado se ha parado (boton PARAR o cambio de documento)
+Private razonParada As String
+Private nHechosJobs As Long            ' taladros ya procesados (para la barra)
+Private totalJobs As Long              ' taladros que se van a procesar (para la barra)
+Private tMec As Double                 ' instante de inicio del mecanizado
+
 Private Function Dur(ByVal t0 As Double) As Double
     Dur = Timer - t0
     If Dur < 0 Then Dur = Dur + 86400      ' paso por medianoche
@@ -75,6 +82,40 @@ Private Sub RapidoOff()
     rapidoActivo = False
     Set rapidoDoc = Nothing
 End Sub
+
+Private Sub IniciaProgreso(ByVal tIni As Double, ByVal total As Long)
+    parado = False: razonParada = "": nHechosJobs = 0: tMec = tIni
+    If total < 1 Then total = 1
+    totalJobs = total
+    On Error Resume Next
+    frmProgreso.Inicia total
+End Sub
+
+Private Sub CierraProgreso()
+    On Error Resume Next
+    Unload frmProgreso
+End Sub
+
+' Una vez por taladro: actualiza la barra, deja procesar el clic en PARAR y comprueba que el
+' documento activo sigue siendo el que se esta mecanizando (con la ventana de progreso el usuario
+' PODRIA tocar SolidWorks). True = hay que parar (se hace despues de terminar el taladro anterior).
+Private Function DebeParar(app As SldWorks.SldWorks, act As SldWorks.ModelDoc2, ByVal pieza As String) As Boolean
+    If parado Then DebeParar = True: Exit Function
+    On Error Resume Next
+    frmProgreso.Actualiza nHechosJobs, totalJobs, pieza, Format(Dur(tMec), "0") & " s"
+    If frmProgreso.Parar Then
+        parado = True: razonParada = "pulsaste PARAR"
+    Else
+        Dim ad As SldWorks.ModelDoc2
+        Set ad = app.ActiveDoc
+        If ad Is Nothing Then
+            parado = True: razonParada = "ya no hay documento activo"
+        ElseIf LCase(ad.GetTitle) <> LCase(act.GetTitle) Then
+            parado = True: razonParada = "se cambio de documento activo"
+        End If
+    End If
+    DebeParar = parado
+End Function
 
 Private Sub Anota(ByVal s As String)
     inf = inf & s & vbCrLf
@@ -260,9 +301,11 @@ Public Sub Mecaniza()
     nSaltados = 0: nBorrados = 0
     Dim tIni As Double
     tIni = Timer: tBusca = 0: tCrea = 0: tVol = 0
+    IniciaProgreso tIni, NJobs - nRepetidos
     Dim miemb2() As Long, nmm As Long, vm() As String
     For i = 0 To nPz - 1
-        If modo(i) > 0 Then
+        If modo(i) > 0 And parado Then Anota "NO MECANIZADA " & Piezas(lista(i)).Nombre & ": mecanizado parado"
+        If modo(i) > 0 And Not parado Then
             ReDim miemb2(0 To nPz + 1)
             miemb2(0) = lista(i): nmm = 1
             If miemb(i) <> "" Then
@@ -281,7 +324,7 @@ Public Sub Mecaniza()
     Set amd = app.ActiveDoc
     Set asm = amd
     For i = 0 To nPz - 1
-        If modo(i) = 2 Then
+        If modo(i) = 2 And Not parado Then
             If mGuardado.ReemplazaInstancia(asm, amd, Piezas(lista(i)).Comp, rutaDoc(i)) Then
                 Anota "Instancia " & Piezas(lista(i)).Nombre & " sustituida por " & rutaDoc(i)
                 nSustituidas = nSustituidas + 1
@@ -291,7 +334,9 @@ Public Sub Mecaniza()
         End If
     Next i
     asm.ForceRebuild3 False
+    If parado Then Anota "AVISO mecanizado parado: no se sustituyeron instancias por copias independientes (vuelve a ejecutar para continuar)."
 
+    CierraProgreso
     Dim ruta As String
     Anota TextoTiempos(tIni)
     ruta = EscribeInformeFinal(carpeta, amd, hechos)
@@ -299,7 +344,7 @@ Public Sub Mecaniza()
            IIf(nRepetidos > 0, vbCrLf & "Aclaracion: " & nRepetidos & " de los " & NJobs & " taladros son de piezas REPETIDAS (mismo archivo y mismos taladros)." & vbCrLf & _
                "Ya estan hechos en el archivo y por eso no se cuentan aparte." & vbCrLf, "") & _
            IIf(nSustituidas > 0, vbCrLf & "El ensamblaje ha cambiado (" & nSustituidas & " instancia(s) sustituida(s)): GUARDALO, no se guarda solo." & vbCrLf, "") & _
-           vbCrLf & "Tiempo de mecanizado: " & Format(Dur(tIni), "0") & " s" & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
+           IIf(parado, vbCrLf & "MECANIZADO PARADO (" & razonParada & "): se guardo lo ya hecho. Vuelve a ejecutar para continuar; lo existente no se duplica." & vbCrLf, "") & vbCrLf & "Tiempo de mecanizado: " & Format(Dur(tIni), "0") & " s" & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
     Exit Sub
 
 errores:
@@ -308,6 +353,7 @@ errores:
     Dim txtErr As String
     txtErr = Err.Number & " - " & Err.Description        ' se guarda antes: On Error limpia Err
     RapidoOff
+    CierraProgreso
     Anota "ERROR INESPERADO: " & txtErr & _
           ". Las piezas ya guardadas lo estan; la que se procesaba puede haber quedado abierta sin guardar. Revisa el informe y la copia de seguridad."
     On Error Resume Next
@@ -390,20 +436,23 @@ Private Sub MecanizaPieza(app As SldWorks.SldWorks, amd As SldWorks.ModelDoc2)
         Anota "Copia de seguridad en: " & carpeta
         nSaltados = 0: nBorrados = 0
         tIni = Timer: tBusca = 0: tCrea = 0: tVol = 0
+        IniciaProgreso tIni, NJobs
         hechos = MecanizaDoc(app, amd.GetPathName, lista, nPz)
     End If
 
+    CierraProgreso
     Dim ruta As String
     Anota TextoTiempos(tIni)
     ruta = EscribeInformeFinal(carpeta, amd, hechos)
     MsgBox "Taladros creados: " & hechos & " de " & NJobs & vbCrLf & "Ya existentes (no repetidos): " & nSaltados & vbCrLf & "Eliminados (descartados): " & nBorrados & vbCrLf & _
-           vbCrLf & "Tiempo de mecanizado: " & Format(Dur(tIni), "0") & " s" & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
+           IIf(parado, vbCrLf & "MECANIZADO PARADO (" & razonParada & "): se guardo lo ya hecho. Vuelve a ejecutar para continuar; lo existente no se duplica." & vbCrLf, "") & vbCrLf & "Tiempo de mecanizado: " & Format(Dur(tIni), "0") & " s" & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
     Exit Sub
 
 errores:
     Dim txtErr As String
     txtErr = Err.Number & " - " & Err.Description
     RapidoOff
+    CierraProgreso
     Anota "ERROR INESPERADO: " & txtErr
     On Error Resume Next
     ruta = EscribeInformeFinal(carpeta, amd, hechos)
@@ -511,6 +560,8 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
         If Piezas(miembros(m)).Comp Is Nothing Then Set inv = Nothing Else Set inv = Piezas(miembros(m)).Comp.GetTotalTransform(False).Inverse
         For a = 0 To NJobs - 1
             If Jobs(a).Pieza = miembros(m) Then
+                If DebeParar(app, act, Piezas(miembros(m)).Nombre) Then GoTo finBucle
+                nHechosJobs = nHechosJobs + 1
                 If inv Is Nothing Then
                     pp = Jobs(a).Pc
                     nn = VUnit(Jobs(a).Nout)
@@ -560,7 +611,9 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
 siguiente:
         Next a
     Next m
+finBucle:
     RapidoOff                               ' la pantalla y el arbol vuelven a la normalidad ANTES de agrupar y guardar
+    If parado Then Anota "PARADO (" & razonParada & "): se guarda lo ya hecho en " & act.GetTitle & "; al volver a ejecutar continua sin duplicar."
 
     If hayAviso Then
         Anota "NO GUARDADA " & path & ": algun taladro elimino un volumen distinto del esperado. " & _

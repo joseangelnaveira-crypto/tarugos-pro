@@ -27,6 +27,7 @@ Version revisada: ver `git log` (ultimo commit). Probada en SolidWorks 2024.
 | Error inesperado | `On Error GoTo` en el mecanizado: se escribe el informe y se avisa; las piezas ya guardadas lo estan y hay copia. |
 | Valores absurdos | `mConfig.ValidaParametros` limita todos los parametros (diametro 1-30, profundidades 1-200, N inicial 1-20 entero, holgura 0,001-5...). Solo se aceptan cifras y un separador decimal. Los ajustes del registro se validan al leerlos; si estan fuera de rango se usan los de fabrica. |
 | N manual absurdo | Entero 0-20; si no caben, se reduce y se avisa en el motivo. |
+| Parar el mecanizado | Ventana de progreso con PARAR (`frmProgreso`). Se comprueba una vez por taladro: nunca corta a mitad de un corte; guarda lo hecho y se puede reanudar sin duplicar. Si el documento activo cambia durante el mecanizado, se para solo. Si la ventana falla, el mecanizado se detiene (fallo seguro). |
 | Analisis largo | Barra de progreso y cancelacion con Escape (`mOptim`); un analisis cancelado no modifica nada. |
 
 ## 3. Cambios de esta revision
