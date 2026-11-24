@@ -1,23 +1,42 @@
 Option Explicit
 '==============================================================================
-' frmProgreso - ventana de PROGRESO del mecanizado, con barra de completado y boton PARAR.
-' Formulario NO modal que muestra mTaladros; mTaladros llama a Actualiza una vez por taladro
-' (ahi se procesan los eventos, y por eso responde el boton) y consulta Parar.
-' PARAR no corta nada a medias: mTaladros termina el taladro en curso, guarda la pieza con
-' lo ya hecho y se salta el resto. Al volver a ejecutar continua (no se duplica nada).
+' frmProgreso - ventana de PROGRESO del mecanizado: barra de completado, tiempo restante estimado
+' y botones PARAR / PARAR Y DESHACER.
+' Formulario NO modal que muestra mTaladros; mTaladros llama a Actualiza una vez por taladro y a
+' Atiende varias veces dentro de cada taladro (ahi se procesan los eventos, y por eso responde).
+'   PARAR              : mTaladros termina el taladro en curso, guarda la pieza con lo ya hecho y
+'                        se salta el resto. Al volver a ejecutar continua (no se duplica nada).
+'   PARAR Y DESHACER   : igual, pero ademas (tras confirmar) elimina los taladros creados en ESTA
+'                        ejecucion. Lo que ya existia antes no se toca.
+' Tambien para la tecla Escape y la X de la ventana.
 ' Los controles se crean por codigo.
 '==============================================================================
 
-Public Parar As Boolean
-Private tMostrado As Double      ' instante en que se mostro la ventana (ver btnParar_Click)
+' Para colocar la ventana en la esquina inferior derecha de SolidWorks (lejos del cuadro de confirmacion)
+Private Type RECTW
+    Left As Long
+    Top As Long
+    Right As Long
+    Bottom As Long
+End Type
+Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, lpRect As RECTW) As Long
+Private Declare PtrSafe Function GetDC Lib "user32" (ByVal hWnd As LongPtr) As LongPtr
+Private Declare PtrSafe Function ReleaseDC Lib "user32" (ByVal hWnd As LongPtr, ByVal hdc As LongPtr) As Long
+Private Declare PtrSafe Function GetDeviceCaps Lib "gdi32" (ByVal hdc As LongPtr, ByVal nIndex As Long) As Long
+Private Declare PtrSafe Function GetAsyncKeyState Lib "user32" (ByVal vKey As Long) As Integer   ' solo lectura (tecla Escape)
+
+Public Parar As Boolean          ' se ha pedido parar
+Public Deshacer As Boolean       ' ademas, deshacer lo creado en esta ejecucion
 
 Private Const ANCHO_BARRA As Single = 340
+Private tMostrado As Double      ' instante en que se mostro la ventana (ver PideParar)
 Private lblTitulo As MSForms.Label
 Private lblFondo As MSForms.Label
 Private lblBarra As MSForms.Label
 Private lblPct As MSForms.Label
 Private lblAviso As MSForms.Label
 Private WithEvents btnParar As MSForms.CommandButton
+Private WithEvents btnDeshacer As MSForms.CommandButton
 
 Private Sub UserForm_Initialize()
     Me.Caption = "Tarugos - mecanizando"
@@ -37,19 +56,47 @@ Private Sub UserForm_Initialize()
     lblPct.TextAlign = 2: lblPct.Font.Size = 8
     Set lblAviso = Me.Controls.Add("Forms.Label.1", "lblAviso", True)
     lblAviso.Left = 10: lblAviso.Top = 78: lblAviso.Width = ANCHO_BARRA: lblAviso.Height = 30: lblAviso.Font.Size = 8
-    lblAviso.Caption = "No toques SolidWorks mientras se mecaniza. PARAR termina el taladro en curso y guarda lo ya hecho; para continuar, vuelve a ejecutar (no se duplica nada)."
+    lblAviso.Caption = "No toques SolidWorks mientras se mecaniza. PARAR guarda lo hecho (puedes continuar volviendo a ejecutar). PARAR Y DESHACER elimina lo creado en esta ejecucion. Tambien vale Escape."
     Set btnParar = Me.Controls.Add("Forms.CommandButton.1", "btnParar", True)
-    btnParar.Left = 110: btnParar.Top = 114: btnParar.Width = 140: btnParar.Height = 26
+    btnParar.Left = 10: btnParar.Top = 114: btnParar.Width = 160: btnParar.Height = 26
     btnParar.Caption = "PARAR"
+    Set btnDeshacer = Me.Controls.Add("Forms.CommandButton.1", "btnDeshacer", True)
+    btnDeshacer.Left = 190: btnDeshacer.Top = 114: btnDeshacer.Width = 160: btnDeshacer.Height = 26
+    btnDeshacer.Caption = "PARAR Y DESHACER"
+End Sub
+
+' Esquina inferior derecha de la ventana de SolidWorks; si la API falla, centrada en pantalla
+Private Sub Coloca()
+    Dim fr As Object, hw As LongPtr, rc As RECTW, dpi As Long, dc As LongPtr, pt As Double
+    On Error Resume Next
+    Set fr = Application.SldWorks.Frame
+    hw = fr.GetHWnd
+    If hw <> 0 Then
+        If GetWindowRect(hw, rc) <> 0 Then
+            dc = GetDC(0)
+            dpi = GetDeviceCaps(dc, 88)
+            ReleaseDC 0, dc
+            If dpi <= 0 Then dpi = 96
+            pt = 72 / dpi
+            Me.StartUpPosition = 0
+            Me.Left = rc.Right * pt - Me.Width - 20
+            Me.Top = rc.Bottom * pt - Me.Height - 50
+            Exit Sub
+        End If
+    End If
+    Me.StartUpPosition = 2
 End Sub
 
 ' Muestra la ventana con la barra a cero. total = taladros que se van a procesar
 Public Sub Inicia(ByVal total As Long)
     Parar = False
+    Deshacer = False
     btnParar.Enabled = True
     btnParar.Caption = "PARAR"
+    btnDeshacer.Enabled = True
+    btnDeshacer.Caption = "PARAR Y DESHACER"
     Actualiza 0, total, "", ""
-    Me.StartUpPosition = 2
+    Coloca
     Me.Show vbModeless
     tMostrado = Timer
     DoEvents
@@ -64,24 +111,40 @@ Public Sub Actualiza(ByVal hechos As Long, ByVal total As Long, ByVal pieza As S
     lblBarra.Width = Int(f * (ANCHO_BARRA - 2))
     If pieza <> "" Then lblTitulo.Caption = "Mecanizando: " & pieza
     lblPct.Caption = Format(f * 100, "0") & " %   (" & hechos & " de " & total & " taladros)   " & texto
-    DoEvents                     ' deja procesar el clic en PARAR
+    Atiende
 End Sub
 
-' Los clics en los primeros 1,5 s se ignoran: la ventana aparece justo donde estaba el boton Si de
+' Procesa los eventos pendientes (clic en PARAR) y mira la tecla Escape. Se llama a menudo.
+Public Sub Atiende()
+    DoEvents
+    If (GetAsyncKeyState(&H1B) And &H8000) <> 0 Then PideParar False
+End Sub
+
+' Los clics en los primeros 1,5 s se ignoran: la ventana puede aparecer cerca del boton Si de
 ' la confirmacion y un doble clic o un clic rezagado la habria parado sin querer.
-Private Sub btnParar_Click()
+Private Sub PideParar(ByVal deshace As Boolean)
     If Timer - tMostrado >= 0 And Timer - tMostrado < 1.5 Then Exit Sub
     Parar = True
+    If deshace Then Deshacer = True
     btnParar.Enabled = False
+    btnDeshacer.Enabled = False
     btnParar.Caption = "Parando..."
+    btnDeshacer.Caption = IIf(Deshacer, "Parando y deshaciendo...", "")
+End Sub
+
+' Se reacciona al APRETAR el boton (no al soltarlo): asi basta un clic aunque SolidWorks este ocupado
+Private Sub btnParar_MouseDown(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    PideParar False
+End Sub
+
+Private Sub btnDeshacer_MouseDown(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    PideParar True
 End Sub
 
 ' Cerrar con la X equivale a PARAR (la macro sigue ordenadamente; la ventana la cierra mTaladros)
 Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
     If CloseMode = 0 Then
         Cancel = True
-        Parar = True
-        btnParar.Enabled = False
-        btnParar.Caption = "Parando..."
+        PideParar False
     End If
 End Sub

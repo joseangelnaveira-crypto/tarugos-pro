@@ -168,5 +168,36 @@ Private Function BorraOperaciones(md As SldWorks.ModelDoc2) As Long
         End If
     Next k
     md.ClearSelection2 True
+    BorraCarpetasVacias md
     BorraOperaciones = hechos
 End Function
+
+' Elimina las carpetas del arbol que creo la macro ("TARUGOS", "TARUGOS MACRO", "TARUGOS MACRO 2"...)
+' cuando se han quedado VACIAS. Una carpeta con algo dentro no se toca nunca.
+Public Sub BorraCarpetasVacias(md As SldWorks.ModelDoc2)
+    On Error Resume Next
+    If md.GetType <> swDocPART Then Exit Sub
+    Dim ft As SldWorks.Feature, nombres As New Collection, v As Variant, pd As SldWorks.PartDoc
+    Set ft = md.FirstFeature
+    Do While Not ft Is Nothing
+        If ft.GetTypeName2 = "FtrFolder" Then
+            If UCase(Left(ft.Name, 7)) = "TARUGOS" Then
+                If ft.GetFirstSubFeature Is Nothing Then nombres.Add ft.Name
+            End If
+        End If
+        Set ft = ft.GetNextFeature
+    Loop
+    Set pd = md
+    For Each v In nombres
+        Set ft = pd.FeatureByName(CStr(v))
+        If Not ft Is Nothing Then
+            ' comprobacion final: sigue vacia
+            If ft.GetFirstSubFeature Is Nothing Then
+                md.ClearSelection2 True
+                ft.Select2 False, 0
+                md.Extension.DeleteSelection2 swDelete_Absorbed
+            End If
+        End If
+    Next v
+    md.ClearSelection2 True
+End Sub

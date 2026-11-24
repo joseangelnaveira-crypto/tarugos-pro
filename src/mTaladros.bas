@@ -50,6 +50,13 @@ Private razonParada As String
 Private nHechosJobs As Long            ' taladros ya procesados (para la barra)
 Private totalJobs As Long              ' taladros que se van a procesar (para la barra)
 Private tMec As Double                 ' instante de inicio del mecanizado
+' Lista de lo CREADO en esta ejecucion (ruta del archivo + nombre de la operacion): es lo unico que
+' "PARAR Y DESHACER" puede borrar.
+Private lgRuta() As String
+Private lgNom() As String
+Private nLg As Long
+Private deshacerEstado As Long         ' 0 sin preguntar | 1 confirmado | 2 no
+Private nDeshechos As Long
 
 Private Function Dur(ByVal t0 As Double) As Double
     Dur = Timer - t0
@@ -85,6 +92,7 @@ End Sub
 
 Private Sub IniciaProgreso(ByVal tIni As Double, ByVal total As Long)
     parado = False: razonParada = "": nHechosJobs = 0: tMec = tIni
+    nLg = 0: Erase lgRuta: Erase lgNom: deshacerEstado = 0: nDeshechos = 0
     If total < 1 Then total = 1
     totalJobs = total
     On Error Resume Next
@@ -96,13 +104,22 @@ Private Sub CierraProgreso()
     Unload frmProgreso
 End Sub
 
-' Una vez por taladro: actualiza la barra, deja procesar el clic en PARAR y comprueba que el
-' documento activo sigue siendo el que se esta mecanizando (con la ventana de progreso el usuario
-' PODRIA tocar SolidWorks). True = hay que parar (se hace despues de terminar el taladro anterior).
+Private Function FormatoSeg(ByVal x As Double) As String
+    If x < 90 Then FormatoSeg = Format(x, "0") & " s" Else FormatoSeg = Format(x / 60, "0.0") & " min"
+End Function
+
+' Una vez por taladro: actualiza la barra (con el tiempo restante estimado), deja procesar el clic en
+' PARAR y comprueba que el documento activo sigue siendo el que se esta mecanizando (con la ventana
+' de progreso el usuario PODRIA tocar SolidWorks). True = hay que parar (se hace despues de terminar
+' el taladro anterior).
 Private Function DebeParar(app As SldWorks.SldWorks, act As SldWorks.ModelDoc2, ByVal pieza As String) As Boolean
     If parado Then DebeParar = True: Exit Function
     On Error Resume Next
-    frmProgreso.Actualiza nHechosJobs, totalJobs, pieza, Format(Dur(tMec), "0") & " s"
+    Dim el As Double, txt As String
+    el = Dur(tMec)
+    txt = Format(el, "0") & " s"
+    If nHechosJobs >= 3 And totalJobs > nHechosJobs Then txt = txt & "  |  quedan ~" & FormatoSeg(el / nHechosJobs * (totalJobs - nHechosJobs))
+    frmProgreso.Actualiza nHechosJobs, totalJobs, pieza, txt
     If frmProgreso.Parar Then
         parado = True: razonParada = "pulsaste PARAR"
     Else
@@ -116,6 +133,104 @@ Private Function DebeParar(app As SldWorks.SldWorks, act As SldWorks.ModelDoc2, 
     End If
     DebeParar = parado
 End Function
+
+' Deja procesar los eventos (clic en PARAR / Escape) dentro de un taladro. NO para nada por si
+' solo: la parada se hace siempre entre dos taladros.
+Private Sub Atiende()
+    On Error Resume Next
+    frmProgreso.Atiende
+End Sub
+
+Private Sub Apunta(ByVal ruta As String, ByVal nombre As String)
+    ReDim Preserve lgRuta(0 To nLg)
+    ReDim Preserve lgNom(0 To nLg)
+    lgRuta(nLg) = ruta: lgNom(nLg) = nombre
+    nLg = nLg + 1
+End Sub
+
+Private Function IndiceMiembro(miembros() As Long, ByVal nm As Long, ByVal pieza As Long) As Long
+    Dim i As Long
+    IndiceMiembro = -1
+    For i = 0 To nm - 1
+        If miembros(i) = pieza Then IndiceMiembro = i: Exit Function
+    Next i
+End Function
+
+' Si se pidio PARAR Y DESHACER, pide confirmacion UNA sola vez. True = deshacer lo creado en esta ejecucion.
+Private Function DeshacerConfirmado() As Boolean
+    If deshacerEstado = 0 Then
+        deshacerEstado = 2
+        Dim pedido As Boolean
+        On Error Resume Next
+        pedido = frmProgreso.Deshacer
+        On Error GoTo 0
+        If pedido Then
+            If nLg = 0 Then
+                MsgBox "Todavia no se habia creado ningun taladro en esta ejecucion: no hay nada que deshacer.", vbInformation, "Tarugos"
+            ElseIf MsgBox("Se van a ELIMINAR los " & nLg & " taladros creados en esta ejecucion." & vbCrLf & _
+                          "Los que ya existian antes NO se tocan. La copia de seguridad se hizo al empezar." & vbCrLf & vbCrLf & "¿Continuar?", _
+                          vbYesNo + vbExclamation + vbDefaultButton2, "Tarugos - parar y deshacer") = vbYes Then
+                deshacerEstado = 1
+            End If
+        End If
+    End If
+    DeshacerConfirmado = (deshacerEstado = 1)
+End Function
+
+' Elimina de md los taladros apuntados para su archivo (los creados en esta ejecucion) que sigan
+' llevando la marca de la macro. Devuelve cuantos.
+Private Function DeshazDoc(md As SldWorks.ModelDoc2) As Long
+    Dim i As Long, k As Long, ok As Boolean, n As Long, nex As Long
+    Dim ex() As mDuplicados.TMeta
+    ex = mDuplicados.LeeExistentes(md, nex)
+    For i = nLg - 1 To 0 Step -1
+        If lgNom(i) <> "" And LCase(lgRuta(i)) = LCase(md.GetPathName) Then
+            ok = False
+            For k = 0 To nex - 1
+                If ex(k).Nombre = lgNom(i) Then ok = True: Exit For
+            Next k
+            If ok Then
+                If BorraOperacion(md, lgNom(i)) Then n = n + 1: lgNom(i) = ""
+            End If
+        End If
+    Next i
+    DeshazDoc = n
+End Function
+
+' Piezas ya GUARDADAS antes de parar (ensamblajes: una pieza por archivo): se reabren, se les quitan
+' los taladros de esta ejecucion y se guardan.
+Private Sub DeshacerDocsGuardados(app As SldWorks.SldWorks)
+    Dim i As Long, j As Long, ruta As String, md As SldWorks.ModelDoc2, abierto As Boolean
+    Dim e As Long, w As Long, n As Long, er As Long
+    For i = 0 To nLg - 1
+        If lgNom(i) <> "" Then
+            ruta = lgRuta(i)
+            Set md = app.GetOpenDocumentByName(ruta)
+            abierto = Not md Is Nothing
+            If md Is Nothing Then
+                app.DocumentVisible False, swDocPART
+                Set md = app.OpenDoc6(ruta, swDocPART, swOpenDocOptions_Silent, "", e, w)
+                app.DocumentVisible True, swDocPART
+            End If
+            If md Is Nothing Then
+                Anota "ERROR no se pudo abrir " & ruta & " para deshacer sus taladros (restaura la copia de seguridad si hace falta)"
+            Else
+                n = DeshazDoc(md)
+                nDeshechos = nDeshechos + n
+                If n > 0 Then
+                    mRecuperacion.BorraCarpetasVacias md
+                    er = mGuardado.GuardaDoc(md)
+                    If er <> 0 Then Anota "AVISO error al guardar " & ruta & " (codigo " & er & ")"
+                End If
+                Anota "DESHECHO en " & ruta & ": " & n & " taladros eliminados"
+                If Not abierto Then app.CloseDoc md.GetTitle
+            End If
+            For j = i To nLg - 1
+                If LCase(lgRuta(j)) = LCase(ruta) Then lgNom(j) = ""
+            Next j
+        End If
+    Next i
+End Sub
 
 Private Sub Anota(ByVal s As String)
     inf = inf & s & vbCrLf
@@ -318,6 +433,16 @@ Public Sub Mecaniza()
         End If
     Next i
 
+    If parado Then
+        If DeshacerConfirmado() Then
+            DeshacerDocsGuardados app
+            hechos = 0
+        End If
+        For i = 0 To nPz - 1
+            If modo(i) = 2 Then Anota "AVISO copia independiente creada en esta ejecucion: " & rutaDoc(i) & " (no se borra sola; puedes borrarla a mano)"
+        Next i
+    End If
+
     ' ---- volver al ensamblaje y sustituir las instancias por sus copias ----
     Dim er As Long
     app.ActivateDoc3 titAsm, False, 1, er
@@ -344,7 +469,7 @@ Public Sub Mecaniza()
            IIf(nRepetidos > 0, vbCrLf & "Aclaracion: " & nRepetidos & " de los " & NJobs & " taladros son de piezas REPETIDAS (mismo archivo y mismos taladros)." & vbCrLf & _
                "Ya estan hechos en el archivo y por eso no se cuentan aparte." & vbCrLf, "") & _
            IIf(nSustituidas > 0, vbCrLf & "El ensamblaje ha cambiado (" & nSustituidas & " instancia(s) sustituida(s)): GUARDALO, no se guarda solo." & vbCrLf, "") & _
-           IIf(parado, vbCrLf & "MECANIZADO PARADO (" & razonParada & "): se guardo lo ya hecho. Vuelve a ejecutar para continuar; lo existente no se duplica." & vbCrLf, "") & vbCrLf & "Tiempo de mecanizado: " & Format(Dur(tIni), "0") & " s" & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
+           IIf(parado, vbCrLf & "MECANIZADO PARADO (" & razonParada & ")." & IIf(deshacerEstado = 1, " Se DESHIZO lo creado en esta ejecucion (" & nDeshechos & " taladros)." & IIf(nBorrados > 0, " Los " & nBorrados & " tarugos descartados que se eliminaron no se pueden restaurar (copia de seguridad).", ""), " Se guardo lo ya hecho; vuelve a ejecutar para continuar (lo existente no se duplica).") & vbCrLf, "") & vbCrLf & "Tiempo de mecanizado: " & Format(Dur(tIni), "0") & " s" & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
     Exit Sub
 
 errores:
@@ -438,6 +563,7 @@ Private Sub MecanizaPieza(app As SldWorks.SldWorks, amd As SldWorks.ModelDoc2)
         tIni = Timer: tBusca = 0: tCrea = 0: tVol = 0
         IniciaProgreso tIni, NJobs
         hechos = MecanizaDoc(app, amd.GetPathName, lista, nPz)
+        If deshacerEstado = 1 Then hechos = 0
     End If
 
     CierraProgreso
@@ -445,7 +571,7 @@ Private Sub MecanizaPieza(app As SldWorks.SldWorks, amd As SldWorks.ModelDoc2)
     Anota TextoTiempos(tIni)
     ruta = EscribeInformeFinal(carpeta, amd, hechos)
     MsgBox "Taladros creados: " & hechos & " de " & NJobs & vbCrLf & "Ya existentes (no repetidos): " & nSaltados & vbCrLf & "Eliminados (descartados): " & nBorrados & vbCrLf & _
-           IIf(parado, vbCrLf & "MECANIZADO PARADO (" & razonParada & "): se guardo lo ya hecho. Vuelve a ejecutar para continuar; lo existente no se duplica." & vbCrLf, "") & vbCrLf & "Tiempo de mecanizado: " & Format(Dur(tIni), "0") & " s" & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
+           IIf(parado, vbCrLf & "MECANIZADO PARADO (" & razonParada & ")." & IIf(deshacerEstado = 1, " Se DESHIZO lo creado en esta ejecucion (" & nDeshechos & " taladros)." & IIf(nBorrados > 0, " Los " & nBorrados & " tarugos descartados que se eliminaron no se pueden restaurar (copia de seguridad).", ""), " Se guardo lo ya hecho; vuelve a ejecutar para continuar (lo existente no se duplica).") & vbCrLf, "") & vbCrLf & "Tiempo de mecanizado: " & Format(Dur(tIni), "0") & " s" & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
     Exit Sub
 
 errores:
@@ -555,11 +681,14 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
     hayAviso = False
     RapidoOn act
     Anota "   existentes en " & act.GetTitle & ":" & vbCrLf & mDuplicados.Diag(act)
-    For m = 0 To nm - 1
-        ' pieza multicuerpo (Comp = Nothing): las coordenadas del documento ya son las de la pieza
-        If Piezas(miembros(m)).Comp Is Nothing Then Set inv = Nothing Else Set inv = Piezas(miembros(m)).Comp.GetTotalTransform(False).Inverse
-        For a = 0 To NJobs - 1
-            If Jobs(a).Pieza = miembros(m) Then
+    ' Los taladros se hacen en el orden de CreaJobs: los dos de cada tarugo seguidos. En una pieza
+    ' multicuerpo (todo en el mismo archivo) asi, al parar, solo quedan tarugos COMPLETOS.
+    For a = 0 To NJobs - 1
+        m = IndiceMiembro(miembros, nm, Jobs(a).Pieza)
+        If m >= 0 Then
+            If True Then
+                ' pieza multicuerpo (Comp = Nothing): las coordenadas del documento ya son las de la pieza
+                If Piezas(miembros(m)).Comp Is Nothing Then Set inv = Nothing Else Set inv = Piezas(miembros(m)).Comp.GetTotalTransform(False).Inverse
                 If DebeParar(app, act, Piezas(miembros(m)).Nombre) Then GoTo finBucle
                 nHechosJobs = nHechosJobs + 1
                 If inv Is Nothing Then
@@ -608,12 +737,24 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
                     End If
                 End If
             End If
+        End If
 siguiente:
-        Next a
-    Next m
+    Next a
 finBucle:
     RapidoOff                               ' la pantalla y el arbol vuelven a la normalidad ANTES de agrupar y guardar
-    If parado Then Anota "PARADO (" & razonParada & "): se guarda lo ya hecho en " & act.GetTitle & "; al volver a ejecutar continua sin duplicar."
+    If parado Then
+        If DeshacerConfirmado() Then
+            ' PARAR Y DESHACER: se quitan los taladros de esta ejecucion y la pieza NO se guarda
+            ' (en disco queda como estaba)
+            nDeshechos = nDeshechos + DeshazDoc(act)
+            mRecuperacion.BorraCarpetasVacias act
+            Anota "DESHECHO en " & act.GetTitle & ": taladros de esta ejecucion eliminados; la pieza no se guarda (queda como estaba en disco)."
+            If borrados > 0 Then Anota "AVISO " & borrados & " tarugos descartados se eliminaron de " & act.GetTitle & " y no se pueden restaurar sin la copia de seguridad."
+            If Not ventanaPrevia Then app.CloseDoc act.GetTitle
+            Exit Function
+        End If
+        Anota "PARADO (" & razonParada & "): se guarda lo ya hecho en " & act.GetTitle & "; al volver a ejecutar continua sin duplicar."
+    End If
 
     If hayAviso Then
         Anota "NO GUARDADA " & path & ": algun taladro elimino un volumen distinto del esperado. " & _
@@ -878,6 +1019,7 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     md.SketchManager.CreateCircleByRadius ps.X, ps.Y, 0, Cfg.Diametro * MM / 2
     md.SketchManager.AddToDB = False
     md.SketchManager.InsertSketch True
+    Atiende
 
     Dim feat As SldWorks.Feature
     ' OJO: el parametro "Flip" de FeatureCut4 significa "cortar por FUERA del perfil".
@@ -886,6 +1028,7 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     Set cuerpoPieza = CuerpoDePieza(md, jb.Pieza)          ' Nothing salvo en piezas multicuerpo
     Set feat = CortaCiego(md, jb.Prof, False, cuerpoPieza)
     If feat Is Nothing Then Set feat = CortaCiego(md, jb.Prof, True, cuerpoPieza)      ' sentido contrario
+    Atiende
     If feat Is Nothing Then
         Anota "ERROR " & jb.Nombre & ": el corte-extruido fallo (circulo en croquis: " & Format(ps.X * 1000, "0.0") & " ; " & _
               Format(ps.Y * 1000, "0.0") & " ; " & Format(ps.Z * 1000, "0.0") & " mm; croquis=" & NombreCroquisNuevo(md) & _
@@ -900,6 +1043,7 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     quitado = v0 - v1
     esperado = 3.14159265358979 * (Cfg.Diametro * MM / 2) ^ 2 * jb.Prof
     feat.Name = jb.Nombre
+    Apunta md.GetPathName, feat.Name
     mDuplicados.Marca feat, pp0, nn, Cfg.Diametro, jb.Prof / MM
     Anota "      marca: " & mDuplicados.UltimoAdd & "  tipo=" & feat.GetTypeName2
     If Abs(quitado - esperado) > 0.05 * esperado Then
