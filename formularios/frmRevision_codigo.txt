@@ -71,11 +71,12 @@ Private WithEvents btnFijaN As MSForms.CommandButton
 Private WithEvents btnVaciar As MSForms.CommandButton
 Private WithEvents btnListaMenos As MSForms.CommandButton
 Private WithEvents btnListaMas As MSForms.CommandButton
+Private chkRapido As MSForms.CheckBox
 Private txtN As MSForms.TextBox                  ' numero de tarugos de las uniones marcadas (0 = automatico)
 Private hListaAct As Single                       ' altura actual de la lista (puntos)
 Private hListaMax As Single                       ' maxima que cabe en la ventana de SolidWorks
 Private dAplicado As Single                       ' desplazamiento ya aplicado a los controles de abajo
-Private Const ALTO_BASE As Single = 722           ' alto util de la ventana con la lista de 240 puntos
+Private Const ALTO_BASE As Single = 750           ' alto util de la ventana con la lista de 240 puntos
 Private lblAyuda As MSForms.Label
 Private esperandoSeleccion As Boolean
 Private yLeyenda As Single
@@ -128,7 +129,7 @@ Private Sub UserForm_Initialize()
     ultimoClic = -1
     Me.Caption = "Tarugos Pro"
     Me.Width = 520
-    Me.Height = 732
+    Me.Height = 760
     Dim q As Long, lp As MSForms.Label
     ' --- modo ---
     Set btnAuto = NuevoBoton("btnAuto", "AUTOMATICO", 8, 6, 120, 26, "Analiza todo el ensamblaje")
@@ -202,8 +203,13 @@ Private Sub UserForm_Initialize()
     txtN.Left = 160: txtN.Top = 654: txtN.Width = 36: txtN.Height = 20: txtN.Text = "0"
     Set btnFijaN = NuevoBoton("btnFijaN", "FIJAR N", 200, 652, 100, 26, "Fija el numero de tarugos de las uniones a las que pertenece algun tarugo marcado y recalcula (se conservan los tarugos quitados a mano)")
     Set btnVaciar = NuevoBoton("btnVaciar", "VACIAR SELECCION", 304, 652, 206, 26, "Olvida las piezas elegidas en MANUAL (la siguiente seleccion empezara de cero)")
-    Set btnCancelar = NuevoBoton("btnCancelar", "CANCELAR", 8, 684, 160, 28)
-    Set btnMecanizar = NuevoBoton("btnMecanizar", "ACEPTAR Y MECANIZAR", 172, 684, 338, 28)
+    Set chkRapido = Me.Controls.Add("Forms.CheckBox.1", "chkRapido", True)
+    chkRapido.Left = 8: chkRapido.Top = 684: chkRapido.Width = 500: chkRapido.Height = 22: chkRapido.Font.Size = 8
+    chkRapido.Caption = "Modo rapido: no repinta la pantalla al mecanizar (mas rapido; no se ve girar la pieza)"
+    chkRapido.Value = False
+    chkRapido.ControlTipText = "Solo afecta a la velocidad. Al terminar cada pieza la pantalla se restaura. Para ver como se hacen los taladros, dejalo desmarcado."
+    Set btnCancelar = NuevoBoton("btnCancelar", "CANCELAR", 8, 712, 160, 28)
+    Set btnMecanizar = NuevoBoton("btnMecanizar", "ACEPTAR Y MECANIZAR", 172, 712, 338, 28)
     CargaParametros
     actualizando = False
 End Sub
@@ -820,6 +826,7 @@ End Sub
 
 Private Sub btnMecanizar_Click()
     Aceptado = True
+    mTaladros.ModoRapido = CBool(chkRapido.Value)      ' se lee ANTES de descargar el formulario
     Unload Me                  ' cierra la revision y restaura la vista
     mTaladros.Mecaniza         ' pide confirmacion y crea los taladros reales
 End Sub

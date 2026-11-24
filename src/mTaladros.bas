@@ -34,6 +34,48 @@ Private nSaltados As Long
 Private nBorrados As Long
 Private hayAviso As Boolean            ' un taladro de la pieza actual elimino un volumen inesperado
 
+' --- tiempos (se escriben en el informe) y modo rapido ---
+Public ModoRapido As Boolean           ' lo pone la ventana de revision (casilla "Modo rapido")
+Private tBusca As Double               ' s buscando la cara de cada taladro
+Private tCrea As Double                ' s creando taladros (croquis + corte + volumen)
+Private tVol As Double                 ' s calculando volumenes (incluido en tCrea)
+Private volPrevio As Double            ' volumen de la pieza tras el ultimo corte verificado (m3)
+Private volValido As Boolean           ' True solo si volPrevio sigue siendo el volumen actual
+Private rapidoActivo As Boolean
+Private rapidoDoc As SldWorks.ModelDoc2
+
+Private Function Dur(ByVal t0 As Double) As Double
+    Dur = Timer - t0
+    If Dur < 0 Then Dur = Dur + 86400      ' paso por medianoche
+End Function
+
+Private Function TextoTiempos(ByVal tIni As Double) As String
+    TextoTiempos = "TIEMPOS (s): total " & Format(Dur(tIni), "0.0") & " | busqueda de cara " & Format(tBusca, "0.0") & _
+                   " | creacion de taladros " & Format(tCrea, "0.0") & " (de ellos, calculo de volumen " & Format(tVol, "0.0") & ")" & _
+                   " | modo rapido " & IIf(ModoRapido, "SI", "NO")
+End Function
+
+' Modo rapido: mientras se taladra una pieza no se repinta la pantalla ni se actualiza el arbol.
+' SIEMPRE se restaura al terminar la pieza (RapidoOff) y en el manejador de errores.
+Private Sub RapidoOn(md As SldWorks.ModelDoc2)
+    If Not ModoRapido Then Exit Sub
+    On Error Resume Next
+    md.ActiveView.EnableGraphicsUpdate = False
+    md.FeatureManager.EnableFeatureTree = False
+    Set rapidoDoc = md
+    rapidoActivo = True
+End Sub
+
+Private Sub RapidoOff()
+    If Not rapidoActivo Then Exit Sub
+    On Error Resume Next
+    rapidoDoc.ActiveView.EnableGraphicsUpdate = True
+    rapidoDoc.FeatureManager.EnableFeatureTree = True
+    rapidoDoc.GraphicsRedraw2
+    rapidoActivo = False
+    Set rapidoDoc = Nothing
+End Sub
+
 Private Sub Anota(ByVal s As String)
     inf = inf & s & vbCrLf
 End Sub
@@ -216,6 +258,8 @@ Public Sub Mecaniza()
     Dim titAsm As String
     titAsm = amd.GetTitle
     nSaltados = 0: nBorrados = 0
+    Dim tIni As Double
+    tIni = Timer: tBusca = 0: tCrea = 0: tVol = 0
     Dim miemb2() As Long, nmm As Long, vm() As String
     For i = 0 To nPz - 1
         If modo(i) > 0 Then
@@ -249,12 +293,13 @@ Public Sub Mecaniza()
     asm.ForceRebuild3 False
 
     Dim ruta As String
+    Anota TextoTiempos(tIni)
     ruta = EscribeInformeFinal(carpeta, amd, hechos)
     MsgBox "Taladros creados: " & hechos & " de " & NJobs & vbCrLf & "Ya existentes (no repetidos): " & nSaltados & vbCrLf & "Eliminados (descartados): " & nBorrados & vbCrLf & _
            IIf(nRepetidos > 0, vbCrLf & "Aclaracion: " & nRepetidos & " de los " & NJobs & " taladros son de piezas REPETIDAS (mismo archivo y mismos taladros)." & vbCrLf & _
                "Ya estan hechos en el archivo y por eso no se cuentan aparte." & vbCrLf, "") & _
            IIf(nSustituidas > 0, vbCrLf & "El ensamblaje ha cambiado (" & nSustituidas & " instancia(s) sustituida(s)): GUARDALO, no se guarda solo." & vbCrLf, "") & _
-           vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
+           vbCrLf & "Tiempo de mecanizado: " & Format(Dur(tIni), "0") & " s" & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
     Exit Sub
 
 errores:
@@ -262,6 +307,7 @@ errores:
     ' se estaba procesando puede quedar abierta SIN guardar (hay copia de seguridad).
     Dim txtErr As String
     txtErr = Err.Number & " - " & Err.Description        ' se guarda antes: On Error limpia Err
+    RapidoOff
     Anota "ERROR INESPERADO: " & txtErr & _
           ". Las piezas ya guardadas lo estan; la que se procesaba puede haber quedado abierta sin guardar. Revisa el informe y la copia de seguridad."
     On Error Resume Next
@@ -306,6 +352,8 @@ Private Sub MecanizaPieza(app As SldWorks.SldWorks, amd As SldWorks.ModelDoc2)
     If mGuardado.EsSoloLectura(amd) Then MsgBox "La pieza es de solo lectura (sin extraer / protegida).", vbExclamation, "Tarugos": Exit Sub
     inf = ""
     Dim carpeta As String, hechos As Long
+    Dim tIni As Double
+    tIni = Timer
     On Error GoTo errores
 
     CreaJobs
@@ -341,18 +389,21 @@ Private Sub MecanizaPieza(app As SldWorks.SldWorks, amd As SldWorks.ModelDoc2)
     Else
         Anota "Copia de seguridad en: " & carpeta
         nSaltados = 0: nBorrados = 0
+        tIni = Timer: tBusca = 0: tCrea = 0: tVol = 0
         hechos = MecanizaDoc(app, amd.GetPathName, lista, nPz)
     End If
 
     Dim ruta As String
+    Anota TextoTiempos(tIni)
     ruta = EscribeInformeFinal(carpeta, amd, hechos)
     MsgBox "Taladros creados: " & hechos & " de " & NJobs & vbCrLf & "Ya existentes (no repetidos): " & nSaltados & vbCrLf & "Eliminados (descartados): " & nBorrados & vbCrLf & _
-           vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
+           vbCrLf & "Tiempo de mecanizado: " & Format(Dur(tIni), "0") & " s" & vbCrLf & "Informe: " & ruta, vbInformation, "Tarugos - Fase 5"
     Exit Sub
 
 errores:
     Dim txtErr As String
     txtErr = Err.Number & " - " & Err.Description
+    RapidoOff
     Anota "ERROR INESPERADO: " & txtErr
     On Error Resume Next
     ruta = EscribeInformeFinal(carpeta, amd, hechos)
@@ -419,6 +470,8 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
     Dim e As Long, w As Long
     Dim pmd As SldWorks.ModelDoc2
     Dim creados As Long                 ' (se declara aqui para que el manejador de errores lo vea)
+    Dim t1 As Double
+    volValido = False                   ' el volumen guardado es de otra pieza
     On Error GoTo errDoc
     ' Si la pieza ya tenia ventana abierta (la abrio el usuario), no se cierra al terminar:
     ' solo se cierran las ventanas que abre la macro. Una pieza cargada por el ensamblaje
@@ -451,6 +504,7 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
     Dim ex() As mDuplicados.TMeta, nex As Long, est As Long, profmm As Double
     Dim nombreEx As String, borrados As Long
     hayAviso = False
+    RapidoOn act
     Anota "   existentes en " & act.GetTitle & ":" & vbCrLf & mDuplicados.Diag(act)
     For m = 0 To nm - 1
         ' pieza multicuerpo (Comp = Nothing): las coordenadas del documento ya son las de la pieza
@@ -468,6 +522,7 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
                 ex = mDuplicados.LeeExistentes(act, nex)
                 If Jobs(a).Borrar Then
                     nombreEx = mDuplicados.NombreExistente(ex, nex, pp, nn)
+                    volValido = False           ' borrar una operacion cambia el volumen
                     If nombreEx <> "" Then
                         If BorraOperacion(act, nombreEx) Then
                             nBorrados = nBorrados + 1: borrados = borrados + 1
@@ -486,21 +541,26 @@ Private Function MecanizaDoc(app As SldWorks.SldWorks, ByVal path As String, mie
                     nSaltados = nSaltados + 1
                     Anota "AVISO " & Jobs(a).Nombre & ": ya hay un taladro de la macro en ese punto con otro diametro/profundidad; no se modifica"
                 Else
+                    t1 = Timer
                     Set f = BuscaCara(act, pp, nn, Jobs(a).Pieza)
+                    tBusca = tBusca + Dur(t1)
                     If f Is Nothing Then
                         Anota "ERROR " & Jobs(a).Nombre & ": no se encontro la cara de contacto en la pieza"
                     ElseIf mUniones.AgujeroEnCara(f, pp) Then
                         ' el modelo ya trae ahi un agujero del diametro del tarugo: no se taladra otro encima
                         nSaltados = nSaltados + 1
                         Anota "YA HAY un agujero del modelo en " & Jobs(a).Nombre & " (no se taladra otro encima)"
-                    ElseIf CreaTaladro(act, f, pp, nn, Jobs(a)) Then
-                        creados = creados + 1
+                    Else
+                        t1 = Timer
+                        If CreaTaladro(act, f, pp, nn, Jobs(a)) Then creados = creados + 1
+                        tCrea = tCrea + Dur(t1)
                     End If
                 End If
             End If
 siguiente:
         Next a
     Next m
+    RapidoOff                               ' la pantalla y el arbol vuelven a la normalidad ANTES de agrupar y guardar
 
     If hayAviso Then
         Anota "NO GUARDADA " & path & ": algun taladro elimino un volumen distinto del esperado. " & _
@@ -529,6 +589,7 @@ siguiente:
     Exit Function
 
 errDoc:
+    RapidoOff
     ' Error no previsto en esta pieza: se anota y se sigue con las demas. La ventana queda
     ' abierta SIN guardar (no se sabe en que estado esta); hay copia de seguridad.
     Anota "ERROR INESPERADO en " & path & ": " & Err.Number & " - " & Err.Description & _
@@ -691,17 +752,23 @@ Private Function CType2(md As SldWorks.ModelDoc2) As SldWorks.PartDoc
 End Function
 
 Private Function Volumen(md As SldWorks.ModelDoc2) As Double
-    Dim mp As SldWorks.MassProperty
+    Dim mp As SldWorks.MassProperty, t0 As Double
+    t0 = Timer
     Set mp = md.Extension.CreateMassProperty
     If Not mp Is Nothing Then Volumen = mp.Volume
+    tVol = tVol + Dur(t0)
 End Function
 
 '------------------------------------------------------------------------------
 ' Sketch circular en la cara + Corte-extruido ciego. Verifica el volumen eliminado.
 '------------------------------------------------------------------------------
 Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp As TV3, nn As TV3, jb As TJob) As Boolean
+    ' Volumen antes del corte: si el corte anterior de esta pieza se verifico, su volumen final ES el
+    ' de ahora (nada mas ha cambiado): se ahorra un calculo de masa por taladro. Se invalida en cuanto
+    ' algo puede haberlo cambiado (fallo, borrado de una operacion, otra pieza).
     Dim v0 As Double
-    v0 = Volumen(md)
+    If volValido Then v0 = volPrevio Else v0 = Volumen(md)
+    volValido = False
 
     ' El punto del tarugo esta en el plano de contacto de la pieza 1; la cara de ESTA pieza puede
     ' estar a unas decimas (holgura entre piezas). Se proyecta el punto sobre el plano de la cara.
@@ -776,6 +843,7 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
 
     Dim v1 As Double, esperado As Double, quitado As Double
     v1 = Volumen(md)
+    volPrevio = v1: volValido = True
     quitado = v0 - v1
     esperado = 3.14159265358979 * (Cfg.Diametro * MM / 2) ^ 2 * jb.Prof
     feat.Name = jb.Nombre

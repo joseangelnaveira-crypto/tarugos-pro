@@ -32,6 +32,8 @@ pero **no se ha probado en esas versiones**.
      ese numero de tarugos (si no caben, se avisa en el motivo). Se recalcula conservando lo quitado a mano.
    - **QUITAR MARCADOS / RESTAURAR MARCADOS**, **MARCAR TODOS / DESMARCAR TODOS / MARCAR ELIMINADOS**, **QUITAR / RESTAURAR UNION COMPLETA**,
      **REACTIVAR TODOS** (vuelve a activar lo quitado). Un tarugo eliminado deja de dibujarse en el 3D. Las uniones dudosas empiezan desactivadas.
+   - **Modo rapido** (casilla junto a ACEPTAR Y MECANIZAR): no repinta la pantalla ni actualiza el arbol mientras se taladra cada pieza; en la prueba (36 taladros) tardo 14 s frente a 57 s. Con ella marcada no se ve girar la pieza. La pantalla se restaura al terminar cada pieza. Por defecto desmarcada.
+   - El informe `Informe_Fase5.txt` incluye una linea `TIEMPOS` (busqueda de caras, creacion de taladros, calculo de volumen).
 4. **ACEPTAR Y MECANIZAR** pide confirmacion, hace copia de seguridad (carpeta `Respaldo_Tarugos_<fecha>` junto al archivo),
    crea los taladros y guarda cada archivo una vez.
 5. **DESHACER MECANIZADO** elimina solo las operaciones creadas por la macro (en ensamblaje y en pieza).
