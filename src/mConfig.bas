@@ -32,16 +32,48 @@ Private Const APP_REG As String = "TarugosPro"
 
 ' Valores de fabrica; despues se aplican los que el usuario haya guardado en la ventana
 ' de configuracion (registro de Windows: HKCU\Software\VB and VBA Program Settings).
+Private ignoraRegistro As Boolean
+
 Public Sub CfgPorDefecto()
+    ' Se leen los ajustes guardados; si alguno esta fuera de rango (archivo del registro
+    ' modificado o corrupto) se descartan todos y se usan los valores de fabrica.
+    ignoraRegistro = False
+    CargaCfg
+    With Cfg
+        If ValidaParametros(.Diametro, .Prof1, .Prof2, .DistExtremos, .LongRef, .NInicial, .IncLong, .IncN, .Tol) <> "" Then
+            ignoraRegistro = True
+            CargaCfg
+            ignoraRegistro = False
+        End If
+    End With
+End Sub
+
+' Comprueba los parametros de usuario. Devuelve "" si todos son validos o el motivo del rechazo.
+' (limites razonables para tarugos de mueble; evitan valores que producirian cortes absurdos)
+Public Function ValidaParametros(ByVal d As Double, ByVal p1 As Double, ByVal p2 As Double, ByVal de As Double, _
+                                 ByVal lr As Double, ByVal ni As Double, ByVal il As Double, ByVal inn As Double, _
+                                 ByVal tl As Double) As String
+    If d < 1 Or d > 30 Then ValidaParametros = "El diametro debe estar entre 1 y 30 mm.": Exit Function
+    If p1 < 1 Or p1 > 200 Then ValidaParametros = "La profundidad de la pieza 1 debe estar entre 1 y 200 mm.": Exit Function
+    If p2 < 1 Or p2 > 200 Then ValidaParametros = "La profundidad de la pieza 2 debe estar entre 1 y 200 mm.": Exit Function
+    If de < 0 Or de > 1000 Then ValidaParametros = "La distancia a los extremos debe estar entre 0 y 1000 mm.": Exit Function
+    If lr < 1 Or lr > 20000 Then ValidaParametros = "La longitud de referencia debe estar entre 1 y 20000 mm.": Exit Function
+    If ni < 1 Or ni > 20 Or ni <> Int(ni) Then ValidaParametros = "El numero inicial de tarugos debe ser un entero entre 1 y 20.": Exit Function
+    If il < 1 Or il > 20000 Then ValidaParametros = "El incremento de longitud debe estar entre 1 y 20000 mm.": Exit Function
+    If inn < 0 Or inn > 10 Or inn <> Int(inn) Then ValidaParametros = "El incremento de tarugos debe ser un entero entre 0 y 10.": Exit Function
+    If tl < 0.001 Or tl > 5 Then ValidaParametros = "La holgura entre piezas debe estar entre 0,001 y 5 mm.": Exit Function
+End Function
+
+Private Sub CargaCfg()
     With Cfg
         .Diametro = Leido("Diametro", 8)
         .Prof1 = Leido("Prof1", 31)
         .Prof2 = Leido("Prof2", 11)
         .DistExtremos = Leido("DistExtremos", 50)
         .LongRef = Leido("LongRef", 1000)
-        .NInicial = CLng(Leido("NInicial", 3))
+        .NInicial = LeidoL("NInicial", 3)
         .IncLong = Leido("IncLong", 300)
-        .IncN = CLng(Leido("IncN", 1))
+        .IncN = LeidoL("IncN", 1)
         .Tol = Leido("Tol", 0.2)
         .AreaMinCara = 100
         .MinMaterial = 3
@@ -56,7 +88,14 @@ End Sub
 Private Function Leido(ByVal nombre As String, ByVal defecto As Double) As Double
     Dim s As String
     s = GetSetting(APP_REG, "Config", nombre, "")
-    If s = "" Then Leido = defecto Else Leido = Val(Replace(s, ",", "."))
+    If ignoraRegistro Or s = "" Then Leido = defecto Else Leido = Val(Replace(s, ",", "."))
+End Function
+
+' Entero leido del registro; un valor fuera del rango de Long no provoca error (se usa el defecto)
+Private Function LeidoL(ByVal nombre As String, ByVal defecto As Long) As Long
+    Dim v As Double
+    v = Leido(nombre, defecto)
+    If v < -1000000# Or v > 1000000# Then LeidoL = defecto Else LeidoL = CLng(v)
 End Function
 
 Public Sub CfgGuarda()

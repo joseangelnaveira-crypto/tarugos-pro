@@ -5,7 +5,7 @@ deja revisarlos y crea taladros reales (cortes extruidos) en los archivos de cad
 
 ## Estructura
 - `TarugosPro.swp`: proyecto compilado con TODO ya cargado (es lo que se ejecuta). Entrada: `main` -> `Tarugos_Principal`.
-- `src/`: modulos .bas/.cls (fuente de verdad, ultima version). `formularios/`: codigo de los 2 UserForms.
+- `src/`: modulos .bas/.cls (fuente de verdad, ultima version). `formularios/`: codigo de los 1 UserForm (frmRevision).
 - Los .frm NO se pueden importar en este SolidWorks ("memoria insuficiente"): los controles se crean por codigo.
   Para reconstruir el .swp: Insertar > UserForm, renombrar (`frmPrincipal`, `frmRevision`), pegar el codigo del .txt, e importar los .bas.
 - Todos los modulos con procedimientos publicos llevan `Option Private Module` (para que solo salga `main` en Macro > Ejecutar).
@@ -51,4 +51,6 @@ Pendiente / sin confirmar:
   (todo el acceso a archivos esta en `mGuardado` para anadirlo).
 - Informe CSV (`mInformes`): escrito, no verificado con una ejecucion real.
 - LISTA DE REVISION CON COLORES (23/11/2026): el ListBox de VBA no permite color por fila, asi que rmRevision usa un Frame con barra vertical y UNA CASILLA (CheckBox) POR FILA, creadas por codigo; los eventos los recoge la clase cFila (src/cFila.cls) y los reenvia a FilaCambia/FilaMouseUp/FilaTecla del formulario. Colores: verde ACTIVO, azul YA HECHO / HECHO EN P1/P2, naranja CERCA DE HECHO, gris ELIMINADO, rojo SIN MATERIAL, amarillo FORZADO. La rueda del raton NO desplaza el marco (limite de MSForms): se usa la barra lateral. Estados nuevos: YA HECHO (el modelo ya trae el agujero, mUniones.AgujeroEnCara) y CERCA DE HECHO (nuevo tarugo a menos de 50 mm de un agujero hecho: empieza eliminado pero se puede restaurar; QUITAR sobre uno de ellos lo pasa a ELIMINADO). Para cargar cFila hay que IMPORTARLA (Ctrl+M) ademas de pegar el codigo del formulario.
-- La ventana principal es ahora frmRevision (modo + parametros + lista, pegada al borde izquierdo de SolidWorks); frmPrincipal ya no se usa (se deja en el proyecto sin llamar).
+- La ventana principal es ahora frmRevision (modo + parametros + lista, pegada al borde izquierdo de SolidWorks); frmPrincipal y mPrueba se han QUITADO del proyecto (24/11/2026: codigo sin uso; mPrueba esta en pruebas/). Ver SEGURIDAD.md.
+
+- 24/11/2026: MANUAL acumulativo (mMain.ultimosNombres + ReponeEstados), N fijado por union (mPosiciones.NFijos/FijaN, boton FIJAR N), reparto proporcional hasta Lref, REACTIVAR TODOS (antes ACEPTAR TODOS), botones LISTA -/+ (FijaAltura idempotente), validacion central de parametros (mConfig.ValidaParametros) y no mecanizar sin carpeta de respaldo. Pendiente de probar en SolidWorks.

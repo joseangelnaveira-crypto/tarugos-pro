@@ -21,13 +21,17 @@ pero **no se ha probado en esas versiones**.
 
 ## Uso
 1. Abre un **ensamblaje** o una **pieza multicuerpo** (guardada: la macro modifica el archivo) y ejecuta la macro.
-2. La ventana de parametros: **AUTOMATICO** analiza todo; **MANUAL**: selecciona antes 2 o mas componentes
-   (o, en una pieza, 2 o mas cuerpos) y pulsa MANUAL (solo las uniones entre ellos).
+2. Ventana unica (se coloca a la izquierda de SolidWorks): **AUTOMATICO** analiza todo. **MANUAL**: pulsa MANUAL,
+   selecciona componentes (o, en una pieza, cuerpos) y pulsa CONTINUAR; solo se analizan las uniones entre las piezas elegidas.
+   La seleccion es **acumulativa**: puedes volver a pulsar MANUAL, elegir otras piezas y CONTINUAR sin perder las anteriores
+   (y se conserva lo que ya habias quitado a mano). **VACIAR SELECCION** empieza de cero. **LISTA - / LISTA +** cambian la altura de la ventana.
 3. Aparece la **revision**: lista con una casilla por tarugo y cilindros temporales en el modelo (la vista pasa a alambre
    y se restaura al cerrar).
    - Marcar una casilla (o varias: clic, Mays+clic para un rango, Ctrl+A para todos) resalta ese tarugo (mas grande) y sus dos piezas en el 3D.
+   - **FIJAR N**: escribe un numero (0 = automatico), marca algun tarugo de una union y pulsa FIJAR N: esa union lleva exactamente
+     ese numero de tarugos (si no caben, se avisa en el motivo). Se recalcula conservando lo quitado a mano.
    - **QUITAR MARCADOS / RESTAURAR MARCADOS**, **MARCAR TODOS / DESMARCAR TODOS / MARCAR ELIMINADOS**, **QUITAR / RESTAURAR UNION COMPLETA**,
-     **ACEPTAR TODOS**. Un tarugo eliminado deja de dibujarse en el 3D. Las uniones dudosas empiezan desactivadas.
+     **REACTIVAR TODOS** (vuelve a activar lo quitado). Un tarugo eliminado deja de dibujarse en el 3D. Las uniones dudosas empiezan desactivadas.
 4. **ACEPTAR Y MECANIZAR** pide confirmacion, hace copia de seguridad (carpeta `Respaldo_Tarugos_<fecha>` junto al archivo),
    crea los taladros y guarda cada archivo una vez.
 5. **DESHACER MECANIZADO** elimina solo las operaciones creadas por la macro (en ensamblaje y en pieza).
@@ -45,7 +49,12 @@ pero **no se ha probado en esas versiones**.
 | Incremento de tarugos | 1 | ...se anaden estos tarugos |
 | Tolerancia geometrica | 0,1 | Para decidir si dos caras estan en contacto |
 
-N = N inicial + IncN x ENTERO((L - Lref) / IncLong). Separacion minima entre tarugos: 50 mm (6,25 x diametro). Si en una union
+Numero de tarugos de una union de longitud L:
+- L menor que el incremento de longitud (300): **1** tarugo centrado.
+- L hasta la longitud de referencia: **proporcional**, N = redondeo(N inicial x L / Lref), entre 1 y N inicial
+  (con Lref 1000 y N inicial 3: 1000 mm = 3, 500 mm = 2, 300 mm = 1).
+- L mayor que la referencia: N = N inicial + IncN x ENTERO((L - Lref) / IncLong).
+Separacion minima entre tarugos: 50 mm (6,25 x diametro). Si en una union
 corta no caben N tarugos, se prueba con uno menos hasta 1 tarugo centrado (anotado en el motivo de la union).
 Si un tarugo cae en un hueco de alguna de las piezas, se desplaza (manteniendo la distancia a los extremos) o, si no hay
 sitio, se descarta en las dos piezas y se marca "SIN MATERIAL". Los ajustes se guardan en el registro de Windows
@@ -85,5 +94,6 @@ ensamblaje, CANCELAR = omitir.
 mConfig (parametros) - mVec, mPoligono (geometria) - mGeometria (piezas, cuerpos y caras) - mUniones (deteccion) -
 mHuecos, mPosiciones (reparto) - mPreview, mEdicion, cEventos, frmRevision (revision) - mTaladros (cortes reales) -
 mGuardado (acceso a archivos) - mDuplicados (marcas y duplicados) - mRecuperacion (deshacer) - mOptim (progreso) -
-mInformes (CSV) - mPrueba (constructores de ensamblajes de prueba, sin uso) - mMain (punto de entrada) - frmPrincipal.
+mInformes (CSV) - mMain (punto de entrada).
+Revision de seguridad y limites de uso: `SEGURIDAD.md`.
 Pruebas: `pruebas/` (generador del ensamblaje de pruebas por COM).

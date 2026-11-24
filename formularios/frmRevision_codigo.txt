@@ -54,7 +54,7 @@ Private WithEvents btnFin As MSForms.CommandButton
 Private WithEvents btnMarcarTodos As MSForms.CommandButton
 Private WithEvents btnDesmarcarTodos As MSForms.CommandButton
 Private WithEvents btnMarcarEliminados As MSForms.CommandButton
-Private WithEvents btnAceptarTodos As MSForms.CommandButton
+Private WithEvents btnReactivarTodos As MSForms.CommandButton
 Private WithEvents btnEliminar As MSForms.CommandButton
 Private WithEvents btnRestaurar As MSForms.CommandButton
 Private WithEvents btnEliminarUnion As MSForms.CommandButton
@@ -67,6 +67,15 @@ Private WithEvents btnManual As MSForms.CommandButton
 Private WithEvents btnDeshacer As MSForms.CommandButton
 Private WithEvents btnGuardar As MSForms.CommandButton
 Private WithEvents btnFabrica As MSForms.CommandButton
+Private WithEvents btnFijaN As MSForms.CommandButton
+Private WithEvents btnVaciar As MSForms.CommandButton
+Private WithEvents btnListaMenos As MSForms.CommandButton
+Private WithEvents btnListaMas As MSForms.CommandButton
+Private txtN As MSForms.TextBox                  ' numero de tarugos de las uniones marcadas (0 = automatico)
+Private hListaAct As Single                       ' altura actual de la lista (puntos)
+Private hListaMax As Single                       ' maxima que cabe en la ventana de SolidWorks
+Private dAplicado As Single                       ' desplazamiento ya aplicado a los controles de abajo
+Private Const ALTO_BASE As Single = 722           ' alto util de la ventana con la lista de 240 puntos
 Private lblAyuda As MSForms.Label
 Private esperandoSeleccion As Boolean
 Private yLeyenda As Single
@@ -119,12 +128,14 @@ Private Sub UserForm_Initialize()
     ultimoClic = -1
     Me.Caption = "Tarugos Pro"
     Me.Width = 520
-    Me.Height = 700
+    Me.Height = 732
     Dim q As Long, lp As MSForms.Label
     ' --- modo ---
     Set btnAuto = NuevoBoton("btnAuto", "AUTOMATICO", 8, 6, 120, 26, "Analiza todo el ensamblaje")
     Set btnManual = NuevoBoton("btnManual", "MANUAL", 132, 6, 120, 26, "Analiza solo las piezas que selecciones")
     Set btnDeshacer = NuevoBoton("btnDeshacer", "DESHACER MECANIZADO", 256, 6, 140, 26, "Deshace un mecanizado anterior")
+    Set btnListaMenos = NuevoBoton("btnListaMenos", "LISTA -", 400, 6, 52, 26, "Hace la lista (y la ventana) mas baja")
+    Set btnListaMas = NuevoBoton("btnListaMas", "LISTA +", 456, 6, 52, 26, "Hace la lista (y la ventana) mas alta, hasta la altura de SolidWorks")
     Set lblAyuda = Me.Controls.Add("Forms.Label.1", "lblAyuda", True)
     lblAyuda.Left = 8: lblAyuda.Top = 36: lblAyuda.Width = 500: lblAyuda.Height = 26: lblAyuda.Font.Size = 8
     ' --- parametros (3 columnas x 3 filas) ---
@@ -178,13 +189,21 @@ Private Sub UserForm_Initialize()
     Set lblInfo = Me.Controls.Add("Forms.Label.1", "lblInfo", True)
     lblInfo.Left = 8: lblInfo.Top = 560: lblInfo.Width = 500: lblInfo.Height = 26: lblInfo.Font.Size = 8
     lblInfo.ForeColor = 192
-    Set btnAceptarTodos = NuevoBoton("btnAceptarTodos", "ACEPTAR TODOS", 8, 590, 160, 26, "Reactiva todos los tarugos de las uniones validas")
+    Set btnReactivarTodos = NuevoBoton("btnReactivarTodos", "REACTIVAR TODOS", 8, 590, 160, 26, "Vuelve a activar todos los tarugos que hayas quitado (solo uniones validas). No afecta a los que no tienen material.")
     Set btnEliminar = NuevoBoton("btnEliminar", "QUITAR MARCADOS", 172, 590, 166, 26, "Quita (no se taladran) todos los tarugos marcados")
     Set btnRestaurar = NuevoBoton("btnRestaurar", "RESTAURAR MARCADOS", 342, 590, 168, 26, "Vuelve a activar los tarugos marcados")
     Set btnEliminarUnion = NuevoBoton("btnEliminarUnion", "QUITAR UNION COMPLETA", 8, 620, 250, 26, "Quita todos los tarugos de las uniones a las que pertenece algun marcado")
     Set btnRestaurarUnion = NuevoBoton("btnRestaurarUnion", "RESTAURAR UNION COMPLETA", 262, 620, 248, 26, "Reactiva todos los tarugos de las uniones a las que pertenece algun marcado")
-    Set btnCancelar = NuevoBoton("btnCancelar", "CANCELAR", 8, 652, 160, 28)
-    Set btnMecanizar = NuevoBoton("btnMecanizar", "ACEPTAR Y MECANIZAR", 172, 652, 338, 28)
+    Dim lN As MSForms.Label
+    Set lN = Me.Controls.Add("Forms.Label.1", "lN", True)
+    lN.Left = 8: lN.Top = 652: lN.Width = 150: lN.Height = 26: lN.Font.Size = 7
+    lN.Caption = "Tarugos de las uniones marcadas (0 = automatico):"
+    Set txtN = Me.Controls.Add("Forms.TextBox.1", "tN", True)
+    txtN.Left = 160: txtN.Top = 654: txtN.Width = 36: txtN.Height = 20: txtN.Text = "0"
+    Set btnFijaN = NuevoBoton("btnFijaN", "FIJAR N", 200, 652, 100, 26, "Fija el numero de tarugos de las uniones a las que pertenece algun tarugo marcado y recalcula (se conservan los tarugos quitados a mano)")
+    Set btnVaciar = NuevoBoton("btnVaciar", "VACIAR SELECCION", 304, 652, 206, 26, "Olvida las piezas elegidas en MANUAL (la siguiente seleccion empezara de cero)")
+    Set btnCancelar = NuevoBoton("btnCancelar", "CANCELAR", 8, 684, 160, 28)
+    Set btnMecanizar = NuevoBoton("btnMecanizar", "ACEPTAR Y MECANIZAR", 172, 684, 338, 28)
     CargaParametros
     actualizando = False
 End Sub
@@ -208,23 +227,43 @@ Private Sub Coloca()
             fx = rc.Left * pt: fy = rc.Top * pt
             ' altura util disponible (puntos) y la lista se lleva lo que sobra
             ah = (rc.Bottom - rc.Top) * pt - (Me.Height - Me.InsideHeight) - 12
-            If ah > 0 Then hLista = 240 + (ah - 690)
+            If ah > 0 Then hLista = 240 + (ah - ALTO_BASE)
         End If
     End If
     On Error GoTo 0
     If hLista < 110 Then hLista = 110
     If hLista > 460 Then hLista = 460
-    Dim d As Single, c As Control
-    d = hLista - 240
-    fraLista.Height = hLista
-    For Each c In Me.Controls
-        If c.Top >= 520 And c.Name <> "fraLista" Then c.Top = c.Top + d
-    Next c
-    btnBaja.Top = 284 + hLista - 50: btnFin.Top = 284 + hLista - 24
-    Me.Height = (Me.Height - Me.InsideHeight) + 690 + d
+    hListaMax = hLista
+    FijaAltura hLista
     Me.StartUpPosition = 0
     Me.Left = fx
     Me.Top = fy
+End Sub
+
+' Altura de la lista (110 .. maxima que cabe). Es idempotente: recoloca los controles de debajo
+' respecto a su posicion base, asi se puede llamar las veces que haga falta (botones LISTA - / +).
+Private Sub FijaAltura(ByVal h As Single)
+    If h < 110 Then h = 110
+    If h > hListaMax Then h = hListaMax
+    Dim d As Single, delta As Single, c As Control
+    d = h - 240
+    delta = d - dAplicado
+    For Each c In Me.Controls
+        If c.Top >= 520 + dAplicado - 0.5 And c.Name <> "fraLista" And c.Name <> "btnBaja" And c.Name <> "btnFin" Then c.Top = c.Top + delta
+    Next c
+    dAplicado = d
+    hListaAct = h
+    fraLista.Height = h
+    btnBaja.Top = 284 + h - 50: btnFin.Top = 284 + h - 24
+    Me.Height = (Me.Height - Me.InsideHeight) + ALTO_BASE + d
+End Sub
+
+Private Sub btnListaMenos_Click()
+    FijaAltura hListaAct - 60
+End Sub
+
+Private Sub btnListaMas_Click()
+    FijaAltura hListaAct + 60
 End Sub
 
 ' Estado inicial de la ventana unica (al lanzar la macro)
@@ -233,8 +272,8 @@ Public Sub Inicia()
     CargaParametros
     On Error Resume Next
     btnManual.Caption = "MANUAL"
-    lblAyuda.Caption = "AUTOMATICO: analiza todo el ensamblaje.  MANUAL: pulsa MANUAL, selecciona las piezas y pulsa CONTINUAR." & vbCrLf & _
-                       "Cambia un parametro y pulsa RECALCULAR para ver otra propuesta. No se taladra nada sin tu confirmacion."
+    lblAyuda.Caption = "AUTOMATICO: analiza todo el ensamblaje.  MANUAL: pulsa MANUAL, selecciona piezas y pulsa CONTINUAR (las piezas se acumulan)." & vbCrLf & _
+                       "Cambia un parametro y pulsa RECALCULAR. No se taladra nada sin tu confirmacion."
     Coloca
     SinResultados
 End Sub
@@ -258,8 +297,8 @@ End Sub
 Public Sub HabilitaRevision(ByVal v As Boolean)
     btnRecalcular.Enabled = v
     btnMarcarTodos.Enabled = v: btnDesmarcarTodos.Enabled = v: btnMarcarEliminados.Enabled = v
-    btnAceptarTodos.Enabled = v: btnEliminar.Enabled = v: btnRestaurar.Enabled = v
-    btnEliminarUnion.Enabled = v: btnRestaurarUnion.Enabled = v: btnMecanizar.Enabled = v
+    btnReactivarTodos.Enabled = v: btnEliminar.Enabled = v: btnRestaurar.Enabled = v
+    btnEliminarUnion.Enabled = v: btnRestaurarUnion.Enabled = v: btnMecanizar.Enabled = v: btnFijaN.Enabled = v
 End Sub
 
 ' Texto de una fila: columnas de ancho fijo (tipografia de ancho fijo)
@@ -300,24 +339,39 @@ Private Function Fm(ByVal v As Double) As String
     Fm = Replace(CStr(v), ",", ".")
 End Function
 
-Private Function NumP(ByVal i As Long, ByVal minimo As Double, ByRef ok As Boolean) As Double
-    Dim v As Double
-    v = Val(Replace(txtP(i).Text, ",", "."))
-    If v < minimo Then ok = False
-    NumP = v
+' Texto numerico valido: solo cifras y un separador decimal (. o ,); sin signos, letras ni espacios
+Private Function EsNumero(ByVal t As String) As Boolean
+    Dim i As Long, ch As String, nSep As Long
+    t = Replace(Trim(t), ",", ".")
+    If Len(t) = 0 Or Len(t) > 12 Then Exit Function
+    For i = 1 To Len(t)
+        ch = Mid(t, i, 1)
+        If ch = "." Then
+            nSep = nSep + 1
+        ElseIf ch < "0" Or ch > "9" Then
+            Exit Function
+        End If
+    Next i
+    If nSep > 1 Or t = "." Then Exit Function
+    EsNumero = True
+End Function
+
+Private Function NumP(ByVal i As Long, ByRef ok As Boolean) As Double
+    If Not EsNumero(txtP(i).Text) Then ok = False: Exit Function
+    NumP = Val(Replace(Trim(txtP(i).Text), ",", "."))
 End Function
 
 ' Lee y valida los parametros del panel; True si se han aplicado a Cfg (y guardado)
 Private Function Aplica() As Boolean
-    Dim ok As Boolean
+    Dim ok As Boolean, msg As String
     ok = True
     Dim d As Double, p1 As Double, p2 As Double, de As Double, lr As Double, ni As Double
     Dim il As Double, inn As Double, tl As Double
-    d = NumP(0, 1, ok): p1 = NumP(1, 1, ok): p2 = NumP(2, 1, ok): de = NumP(3, 0, ok)
-    lr = NumP(4, 1, ok): ni = NumP(5, 1, ok): il = NumP(6, 1, ok): inn = NumP(7, 0, ok): tl = NumP(8, 0.001, ok)
-    If Not ok Then MsgBox "Hay valores no validos (deben ser numeros positivos).", vbExclamation, "Tarugos": Exit Function
-    If d > 30 Then MsgBox "El diametro parece demasiado grande (maximo 30 mm).", vbExclamation, "Tarugos": Exit Function
-    If tl > 5 Then MsgBox "La holgura maxima entre piezas no puede pasar de 5 mm.", vbExclamation, "Tarugos": Exit Function
+    d = NumP(0, ok): p1 = NumP(1, ok): p2 = NumP(2, ok): de = NumP(3, ok)
+    lr = NumP(4, ok): ni = NumP(5, ok): il = NumP(6, ok): inn = NumP(7, ok): tl = NumP(8, ok)
+    If Not ok Then MsgBox "Hay valores no validos: solo se admiten numeros positivos (sin letras ni signos).", vbExclamation, "Tarugos": Exit Function
+    msg = ValidaParametros(d, p1, p2, de, lr, ni, il, inn, tl)
+    If msg <> "" Then MsgBox msg, vbExclamation, "Tarugos": Exit Function
     With Cfg
         .Diametro = d: .Prof1 = p1: .Prof2 = p2: .DistExtremos = de: .LongRef = lr
         .NInicial = CLng(ni): .IncLong = il: .IncN = CLng(inn): .Tol = tl
@@ -343,7 +397,8 @@ Private Sub btnManual_Click()
         If Not Aplica() Then Exit Sub
         esperandoSeleccion = True
         btnManual.Caption = "CONTINUAR"
-        lblInfo.Caption = "Selecciona en el ensamblaje las piezas que quieres tarugar (clic en la pieza; Ctrl + clic para varias; al menos 2) y pulsa CONTINUAR."
+        lblInfo.Caption = "Selecciona en el ensamblaje las piezas que quieres tarugar (clic en la pieza; Ctrl + clic para varias) y pulsa CONTINUAR." & _
+                          IIf(mMain.NPiezasElegidas > 0, " Piezas ya elegidas: " & mMain.NPiezasElegidas & " (se mantienen; VACIAR SELECCION para empezar de cero).", " Al menos 2.")
     Else
         esperandoSeleccion = False
         btnManual.Caption = "MANUAL"
@@ -356,6 +411,38 @@ Private Sub btnDeshacer_Click()
     mPreview.Limpia
     Me.Hide
     mRecuperacion.Fase6_Deshacer
+End Sub
+
+Private Sub btnVaciar_Click()
+    mMain.VaciaSeleccion
+    esperandoSeleccion = False
+    btnManual.Caption = "MANUAL"
+    lblInfo.Caption = "Seleccion de MANUAL vaciada: la proxima vez empieza de cero."
+End Sub
+
+' Fija el numero de tarugos de las uniones de los tarugos marcados (0 = vuelve al automatico)
+Private Sub btnFijaN_Click()
+    SincronizaDesdeLista
+    If Not EsNumero(txtN.Text) Then MsgBox "Escribe un numero entero entre 0 y 20.", vbExclamation, "Tarugos": Exit Sub
+    Dim v As Double
+    v = Val(Replace(Trim(txtN.Text), ",", "."))
+    If v <> Int(v) Or v < 0 Or v > 20 Then MsgBox "El numero de tarugos debe ser un entero entre 0 y 20 (0 = automatico).", vbExclamation, "Tarugos": Exit Sub
+    Dim i As Long, u As Long, hecho() As Boolean, nU As Long
+    ReDim hecho(0 To NUniones)
+    For i = 0 To NFlat - 1
+        If Flat(i).Sel Then
+            u = Flat(i).U
+            If Not hecho(u) Then
+                hecho(u) = True
+                mPosiciones.FijaN mPosiciones.ClaveUnion(Uniones(u)), CLng(v)
+                nU = nU + 1
+            End If
+        End If
+    Next i
+    If nU = 0 Then lblInfo.Caption = "Marca algun tarugo de la union cuyo numero quieras fijar.": Exit Sub
+    If Not Aplica() Then Exit Sub
+    mMain.Recalcula True
+    lblInfo.Caption = IIf(v = 0, "Numero automatico en ", "N = " & CLng(v) & " fijado en ") & nU & " union(es). Lo que habias quitado a mano se ha conservado."
 End Sub
 
 Private Sub btnGuardar_Click()
@@ -641,8 +728,8 @@ Private Sub btnMarcarEliminados_Click()
     If ContarTarugos() - ContarActivos() = 0 Then lblInfo.Caption = "No hay ningun tarugo eliminado."
 End Sub
 
-Private Sub btnAceptarTodos_Click()
-    AceptarTodos
+Private Sub btnReactivarTodos_Click()
+    ReactivaTodos
     Refresca
     mPreview.Redibuja
 End Sub

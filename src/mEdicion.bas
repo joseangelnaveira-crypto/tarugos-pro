@@ -37,12 +37,54 @@ Public Sub RestauraUnion(ByVal u As Long)
 End Sub
 
 ' Reactiva todos los tarugos de las uniones VALIDAS (las dudosas no se tocan)
-Public Sub AceptarTodos()
+Public Sub ReactivaTodos()
     Dim u As Long
     For u = 0 To NUniones - 1
         If Uniones(u).Estado = "VALIDA" Then RestauraUnion u
     Next u
 End Sub
+
+' Clave de un tarugo entre analisis: piezas + posicion (mm). Sirve para conservar a mano lo quitado
+' o restaurado cuando se vuelve a analizar (MANUAL acumulativo, cambio de N de una union).
+Public Function ClaveTarugo(ByVal u As Long, ByVal k As Long) As String
+    Dim p As TV3
+    p = Uniones(u).Pos(k)
+    ClaveTarugo = Piezas(Uniones(u).P1).Nombre & "|" & Piezas(Uniones(u).P2).Nombre & "|" & _
+                  Format(p.X * 1000, "0.0") & ";" & Format(p.Y * 1000, "0.0") & ";" & Format(p.Z * 1000, "0.0")
+End Function
+
+' Foto del estado activo/eliminado de todos los tarugos actuales
+Public Function GuardaEstados() As Collection
+    Dim c As New Collection, u As Long, k As Long
+    On Error Resume Next
+    For u = 0 To NUniones - 1
+        For k = 0 To Uniones(u).NT - 1
+            c.Add Uniones(u).Activo(k), ClaveTarugo(u, k)
+        Next k
+    Next u
+    Set GuardaEstados = c
+End Function
+
+' Repone lo guardado en los tarugos que siguen existiendo (misma pieza y posicion). Los tarugos
+' sin material (hueco) no se reactivan nunca. Devuelve cuantos se han repuesto.
+Public Function ReponeEstados(c As Collection) As Long
+    If c Is Nothing Then Exit Function
+    Dim u As Long, k As Long, v As Variant, n As Long
+    For u = 0 To NUniones - 1
+        For k = 0 To Uniones(u).NT - 1
+            v = Empty
+            On Error Resume Next
+            v = c(ClaveTarugo(u, k))
+            On Error GoTo 0
+            If Not IsEmpty(v) Then
+                If Not Uniones(u).SinMat(k) Then
+                    If Uniones(u).Activo(k) <> CBool(v) Then Uniones(u).Activo(k) = CBool(v): n = n + 1
+                End If
+            End If
+        Next k
+    Next u
+    ReponeEstados = n
+End Function
 
 Public Function ContarActivos() As Long
     Dim u As Long, k As Long, n As Long

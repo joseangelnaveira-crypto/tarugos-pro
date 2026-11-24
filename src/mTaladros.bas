@@ -175,6 +175,11 @@ Public Sub Mecaniza()
     ' ---- copia de seguridad de los originales que se van a modificar ----
     Dim destino As String
     carpeta = mGuardado.CarpetaRespaldo(amd)
+    If carpeta = "" Then
+        MsgBox "No se pudo crear la carpeta de copia de seguridad junto al ensamblaje (permisos o disco)." & vbCrLf & _
+               "No se ha modificado nada.", vbExclamation, "Tarugos"
+        Exit Sub
+    End If
     For i = 0 To nPz - 1
         If modo(i) = 1 Then
             Set md = Piezas(lista(i)).Comp.GetModelDoc2
@@ -326,6 +331,11 @@ Private Sub MecanizaPieza(app As SldWorks.SldWorks, amd As SldWorks.ModelDoc2)
     End If
 
     carpeta = mGuardado.CarpetaRespaldo(amd)
+    If carpeta = "" Then
+        MsgBox "No se pudo crear la carpeta de copia de seguridad junto a la pieza (permisos o disco)." & vbCrLf & _
+               "No se ha modificado nada.", vbExclamation, "Tarugos"
+        Exit Sub
+    End If
     If Not mGuardado.CopiaA(amd, carpeta & "\" & Mid(amd.GetPathName, InStrRev(amd.GetPathName, "\") + 1)) Then
         Anota "ERROR no se pudo hacer la copia de seguridad: no se mecaniza"
     Else

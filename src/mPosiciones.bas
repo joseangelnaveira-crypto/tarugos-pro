@@ -7,21 +7,58 @@ Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Eje
 '   N = N inicial + IncN * ENTERO((L - Lref) / IncLong)     si L > Lref
 '   N = N inicial                                           si L <= Lref
 ' Extremos a DistExtremos del borde de la union; reparto uniforme y simetrico.
+'
+' Uniones MAS CORTAS que la longitud de referencia: N proporcional a la longitud
+'   N = redondeo( N inicial * L / Lref ), minimo 1   (y 1 si L < incremento de longitud)
+' Ejemplo con Lref = 1000 y N inicial = 3:
+'   L (mm)   300  500  700  1000  1300  1600  1900  2200
+'   N          1    2    2     3     4     5     6     7        (valores por defecto)
+' El usuario puede FIJAR el numero de una union concreta (NFijos), que prevalece sobre la regla.
 '------------------------------------------------------------------------------
-'   L (mm)    600 1000 1200 1300 1600 1900 2200
-'   N          3    3    3    4    5    6    7     (valores por defecto)
 '==============================================================================
 
 ' Aviso del ultimo CalculaPosiciones cuando se han puesto MENOS tarugos de los del reparto
 ' estandar por ser la union corta ("" si no ha hecho falta). mUniones lo anade al motivo.
 Public NotaReparto As String
 
+' Numero de tarugos fijado a mano por union (clave = ClaveUnion). Lo pone la ventana de revision;
+' se conserva al RECALCULAR y se borra al empezar un analisis nuevo (AUTOMATICO / MANUAL).
+Public NFijos As Collection
+
+' Identifica una union de forma estable entre analisis: piezas y origen de la linea de tarugos (mm)
+Public Function ClaveUnion(un As TUnion) As String
+    ClaveUnion = Piezas(un.P1).Nombre & "|" & Piezas(un.P2).Nombre & "|" & _
+                 Format(un.Origen.X * 1000, "0.0") & ";" & Format(un.Origen.Y * 1000, "0.0") & ";" & Format(un.Origen.Z * 1000, "0.0")
+End Function
+
+Public Sub FijaN(ByVal clave As String, ByVal n As Long)
+    If NFijos Is Nothing Then Set NFijos = New Collection
+    On Error Resume Next
+    NFijos.Remove clave
+    On Error GoTo 0
+    If n > 0 Then NFijos.Add n, clave
+End Sub
+
+' Numero fijado por el usuario para esa union (0 = ninguno)
+Public Function NFijado(ByVal clave As String) As Long
+    If NFijos Is Nothing Then Exit Function
+    On Error Resume Next
+    NFijado = CLng(NFijos(clave))
+End Function
+
+Public Sub BorraNFijos()
+    Set NFijos = Nothing
+End Sub
+
 Public Function NumTarugos(ByVal Lmm As Double) As Long
     ' Regla del usuario: una union (tramo entre huecos) mas corta que el incremento de longitud
     ' (300 mm por defecto) lleva UN solo tarugo, centrado.
     If Lmm < Cfg.IncLong Then NumTarugos = 1: Exit Function
     If Lmm <= Cfg.LongRef Then
-        NumTarugos = Cfg.NInicial
+        ' proporcional a la longitud (0,0001 de tolerancia: 500 mm medidos como 499,99 siguen dando 2)
+        NumTarugos = Int(Cfg.NInicial * Lmm / Cfg.LongRef + 0.5001)
+        If NumTarugos < 1 Then NumTarugos = 1
+        If NumTarugos > Cfg.NInicial Then NumTarugos = Cfg.NInicial
     Else
         NumTarugos = Cfg.NInicial + Cfg.IncN * Int((Lmm - Cfg.LongRef) / Cfg.IncLong)
     End If
@@ -62,6 +99,9 @@ Public Function CalculaPosiciones(un As TUnion) As String
     Lmm = un.L / MM
     d = Cfg.DistExtremos
     n0 = NumTarugos(Lmm)
+    Dim nFix As Long
+    nFix = NFijado(ClaveUnion(un))
+    If nFix > 0 Then n0 = nFix
     If n0 < 1 Then CalculaPosiciones = "Numero de tarugos invalido": Exit Function
 
     ' Si no caben los n0 tarugos del reparto estandar (union corta), se prueba con uno menos,
@@ -74,7 +114,9 @@ Public Function CalculaPosiciones(un As TUnion) As String
         If n <= 1 Then CalculaPosiciones = motivo: Exit Function
         n = n - 1
     Loop
-    If n0 = 1 And Cfg.NInicial > 1 Then
+    If nFix > 0 Then
+        NotaReparto = "Numero fijado a mano: " & nFix & IIf(n < nFix, " (solo caben " & n & ")", "")
+    ElseIf n0 = 1 And Cfg.NInicial > 1 Then
         NotaReparto = "Union de " & Format(Lmm, "0") & " mm (menos de " & Format(Cfg.IncLong, "0") & "): 1 tarugo centrado"
     ElseIf n < n0 Then
         NotaReparto = "Union corta (" & Format(Lmm, "0") & " mm): " & n & " tarugo" & IIf(n = 1, "", "s") & _

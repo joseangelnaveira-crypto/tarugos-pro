@@ -29,7 +29,8 @@ Public Function CarpetaRespaldo(amd As SldWorks.ModelDoc2) As String
     On Error Resume Next
     MkDir c
     On Error GoTo 0
-    CarpetaRespaldo = c
+    ' si la carpeta no existe (sin permisos, disco lleno...) se devuelve "": NO se debe mecanizar sin copia
+    If Dir(c, vbDirectory) = "" Then CarpetaRespaldo = "" Else CarpetaRespaldo = c
 End Function
 
 ' Copia el documento (aunque este abierto) con "guardar copia". Devuelve True si el

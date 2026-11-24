@@ -87,6 +87,7 @@ Public Sub Fase6_Deshacer()
     ' ---- copia de seguridad y borrado ----
     Dim carpeta As String
     carpeta = mGuardado.CarpetaRespaldo(amd)
+    If carpeta = "" Then MsgBox "No se pudo crear la carpeta de copia de seguridad: no se elimina nada.", vbExclamation, "Tarugos": Exit Sub
     Dim borradas As Long, n As Long
     For i = 0 To nR - 1
         If cuenta(i) > 0 Then
@@ -142,6 +143,7 @@ Private Sub DeshacerPieza(md As SldWorks.ModelDoc2)
               vbYesNo + vbExclamation + vbDefaultButton2, "Tarugos - deshacer") <> vbYes Then Exit Sub
     Dim carpeta As String, n As Long, er As Long
     carpeta = mGuardado.CarpetaRespaldo(md)
+    If carpeta = "" Then MsgBox "No se pudo crear la carpeta de copia de seguridad: no se elimina nada.", vbExclamation, "Tarugos": Exit Sub
     If Not mGuardado.CopiaA(md, carpeta & "\" & Mid(md.GetPathName, InStrRev(md.GetPathName, "\") + 1)) Then
         MsgBox "No se pudo hacer la copia de seguridad: no se elimina nada.", vbExclamation, "Tarugos": Exit Sub
     End If

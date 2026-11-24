@@ -7,7 +7,8 @@ Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Eje
 Public AsmAnalizado As String
 ' Datos de la ultima revision, para RECALCULAR desde la propia ventana de revision
 Private ultimoManual As Boolean
-Private ultimosNombres As Collection
+Private ultimosNombres As Collection      ' piezas elegidas en MANUAL (se acumulan entre pasadas)
+Private ultimoDoc As String               ' documento al que pertenece ultimosNombres
 '==============================================================================
 ' FASE 3: previsualizacion 3D y edicion de tarugos (NO modifica las piezas).
 ' AUTOMATICO: sin nada seleccionado analiza todo el ensamblaje.
@@ -15,11 +16,22 @@ Private ultimosNombres As Collection
 ' Ejecutar el procedimiento  Fase3_Revisar.
 '==============================================================================
 ' Recalcula desde cero con los parametros actuales (boton RECALCULAR de la ventana de revision)
-Public Sub Recalcula()
-    Fase3_Revisar ultimoManual, True
+' conservar = True: se mantiene lo que el usuario habia quitado / restaurado en los tarugos que siguen igual
+Public Sub Recalcula(Optional ByVal conservar As Boolean = False)
+    Fase3_Revisar ultimoManual, True, conservar
 End Sub
 
-Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVal recalc As Boolean = False)
+' Olvida las piezas acumuladas del modo MANUAL (boton VACIAR SELECCION)
+Public Sub VaciaSeleccion()
+    Set ultimosNombres = Nothing
+    ultimoDoc = ""
+End Sub
+
+Public Function NPiezasElegidas() As Long
+    If Not ultimosNombres Is Nothing Then NPiezasElegidas = ultimosNombres.Count
+End Function
+
+Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVal recalc As Boolean = False, Optional ByVal conservar As Boolean = False)
     Dim swApp As SldWorks.SldWorks
     Set swApp = Application.SldWorks
     Dim md As SldWorks.ModelDoc2
@@ -30,7 +42,12 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVa
         If NCuerposSolidos(md) < 2 Then MsgBox "La pieza activa tiene un solo cuerpo solido: abre un ensamblaje o una pieza multicuerpo.", vbExclamation, "Tarugos": Exit Sub
     End If
 
-    ' si ya hay una revision abierta, se cierra
+    ' si ya hay una revision abierta, se cierra (antes se guarda lo que el usuario edito, por si se conserva)
+    Dim estadoPrevio As Collection, docActual As String
+    docActual = md.GetPathName & "|" & md.GetTitle
+    If conservar Or (manual And Not recalc) Then
+        If docActual = AsmAnalizado And NUniones > 0 Then Set estadoPrevio = GuardaEstados()
+    End If
     mPreview.Limpia
 
     CfgPorDefecto
@@ -46,6 +63,13 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVa
         If ultimosNombres Is Nothing Then Exit Sub
         Set nombres = ultimosNombres
     ElseIf manual Then
+        ' MANUAL acumulativo: las piezas elegidas antes (en este mismo documento) se conservan
+        If Not ultimosNombres Is Nothing And ultimoDoc = docActual Then
+            Dim vv As Variant
+            For Each vv In ultimosNombres
+                nombres.Add CStr(vv)
+            Next vv
+        End If
         n = sm.GetSelectedObjectCount2(-1)
         For i = 1 To n
             Set c = Nothing
@@ -72,7 +96,9 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVa
         End If
     End If
     If Not recalc Then ultimoManual = manual
-    If manual And Not recalc Then Set ultimosNombres = nombres
+    If manual And Not recalc Then Set ultimosNombres = nombres: ultimoDoc = docActual
+    If Not manual And Not recalc Then Set ultimosNombres = Nothing: ultimoDoc = ""
+    If Not recalc Then mPosiciones.BorraNFijos          ' analisis nuevo: se olvidan los N fijados a mano
 
     If md.GetType = swDocPART Then
         AnalizaPiezasDoc swApp, md          ' pieza multicuerpo: cada cuerpo solido es una pieza
@@ -100,6 +126,7 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVa
     End If
 
     EstadoInicial
+    If Not estadoPrevio Is Nothing Then ReponeEstados estadoPrevio
     AsmAnalizado = md.GetPathName & "|" & md.GetTitle
     md.ClearSelection2 True
     ConstruyePreview swApp, md
@@ -107,7 +134,7 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVa
     Set Eventos = New cEventos
     Eventos.Conecta md
     Set Formulario = frmRevision
-    frmRevision.Caption = "Tarugos - Revision (" & modo & ")"
+    frmRevision.Caption = "Tarugos - Revision (" & modo & IIf(manual, ": " & nombres.Count & " piezas elegidas", "") & ")"
     frmRevision.CargaParametros
     frmRevision.HabilitaRevision True
     frmRevision.Refresca
