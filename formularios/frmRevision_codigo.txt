@@ -49,6 +49,8 @@ Private WithEvents btnEliminarUnion As MSForms.CommandButton
 Private WithEvents btnRestaurarUnion As MSForms.CommandButton
 Private WithEvents btnCancelar As MSForms.CommandButton
 Private WithEvents btnMecanizar As MSForms.CommandButton
+Private WithEvents btnRecalcular As MSForms.CommandButton
+Private txtP(0 To 8) As MSForms.TextBox          ' parametros editables (panel de la derecha)
 
 Private Function NuevoBoton(ByVal nombre As String, ByVal texto As String, ByVal x As Single, ByVal y As Single, _
                             ByVal w As Single, ByVal h As Single, Optional ByVal ayuda As String = "") As MSForms.CommandButton
@@ -93,7 +95,7 @@ End Sub
 Private Sub UserForm_Initialize()
     actualizando = True          ' crear controles dispara eventos: ignorarlos
     ultimoClic = -1
-    Me.Width = 654
+    Me.Width = 854
     Me.Height = 504
     Set lblResumen = Me.Controls.Add("Forms.Label.1", "lblResumen", True)
     lblResumen.Left = 12: lblResumen.Top = 6: lblResumen.Width = 620: lblResumen.Height = 54
@@ -136,6 +138,24 @@ Private Sub UserForm_Initialize()
     Set btnRestaurarUnion = NuevoBoton("btnRestaurarUnion", "RESTAURAR UNION COMPLETA", 326, 392, 306, 28, "Reactiva todos los tarugos de las uniones a las que pertenece algun marcado")
     Set btnCancelar = NuevoBoton("btnCancelar", "CANCELAR", 12, 430, 200, 30)
     Set btnMecanizar = NuevoBoton("btnMecanizar", "ACEPTAR Y MECANIZAR", 326, 430, 306, 30)
+    ' panel de parametros (a la derecha): cambiar un valor y pulsar RECALCULAR rehace la propuesta
+    Dim etq As Variant, q As Long, lp As MSForms.Label
+    etq = Array("Diametro del tarugo (mm)", "Profundidad pieza 1 (mm)", "Profundidad pieza 2 (mm)", _
+                "Distancia a los extremos (mm)", "Longitud de referencia (mm)", "Numero inicial de tarugos", _
+                "Incremento de longitud (mm)", "Incremento de tarugos", "Holgura max. entre piezas (mm)")
+    Set lp = Me.Controls.Add("Forms.Label.1", "lblParam", True)
+    lp.Left = 650: lp.Top = 6: lp.Width = 190: lp.Height = 14: lp.Caption = "PARAMETROS": lp.Font.Bold = True
+    For q = 0 To 8
+        Set lp = Me.Controls.Add("Forms.Label.1", "lP" & q, True)
+        lp.Left = 650: lp.Top = 24 + q * 36: lp.Width = 190: lp.Height = 13: lp.Caption = etq(q): lp.Font.Size = 8
+        Set txtP(q) = Me.Controls.Add("Forms.TextBox.1", "tP" & q, True)
+        txtP(q).Left = 650: txtP(q).Top = 38 + q * 36: txtP(q).Width = 90: txtP(q).Height = 18
+    Next q
+    Set btnRecalcular = NuevoBoton("btnRecalcular", "RECALCULAR", 650, 356, 190, 32, "Aplica los parametros y rehace la propuesta desde cero (se pierden las ediciones hechas a mano)")
+    Set lp = Me.Controls.Add("Forms.Label.1", "lblAyudaRec", True)
+    lp.Left = 650: lp.Top = 394: lp.Width = 190: lp.Height = 60: lp.Font.Size = 8
+    lp.Caption = "Cambia un valor y pulsa RECALCULAR para ver como quedan los tarugos. Empieza de cero: se pierden los quitados a mano."
+    CargaParametros
     actualizando = False
 End Sub
 
@@ -165,10 +185,55 @@ Private Function EstadoTexto(ByVal u As Long, ByVal k As Long) As String
     End If
 End Function
 
+' Escribe en el panel los valores actuales de Cfg
+Public Sub CargaParametros()
+    On Error Resume Next
+    txtP(0).Text = Fm(Cfg.Diametro): txtP(1).Text = Fm(Cfg.Prof1): txtP(2).Text = Fm(Cfg.Prof2)
+    txtP(3).Text = Fm(Cfg.DistExtremos): txtP(4).Text = Fm(Cfg.LongRef): txtP(5).Text = CStr(Cfg.NInicial)
+    txtP(6).Text = Fm(Cfg.IncLong): txtP(7).Text = CStr(Cfg.IncN): txtP(8).Text = Fm(Cfg.Tol)
+End Sub
+
+Private Function Fm(ByVal v As Double) As String
+    Fm = Replace(CStr(v), ",", ".")
+End Function
+
+Private Function NumP(ByVal i As Long, ByVal minimo As Double, ByRef ok As Boolean) As Double
+    Dim v As Double
+    v = Val(Replace(txtP(i).Text, ",", "."))
+    If v < minimo Then ok = False
+    NumP = v
+End Function
+
+Private Sub btnRecalcular_Click()
+    Dim ok As Boolean
+    ok = True
+    Dim d As Double, p1 As Double, p2 As Double, de As Double, lr As Double, ni As Double
+    Dim il As Double, inn As Double, tl As Double
+    d = NumP(0, 1, ok): p1 = NumP(1, 1, ok): p2 = NumP(2, 1, ok): de = NumP(3, 0, ok)
+    lr = NumP(4, 1, ok): ni = NumP(5, 1, ok): il = NumP(6, 1, ok): inn = NumP(7, 0, ok): tl = NumP(8, 0.001, ok)
+    If Not ok Then MsgBox "Hay valores no validos (deben ser numeros positivos).", vbExclamation, "Tarugos": Exit Sub
+    If d > 30 Then MsgBox "El diametro parece demasiado grande (maximo 30 mm).", vbExclamation, "Tarugos": Exit Sub
+    If tl > 5 Then MsgBox "La holgura maxima entre piezas no puede pasar de 5 mm.", vbExclamation, "Tarugos": Exit Sub
+    With Cfg
+        .Diametro = d: .Prof1 = p1: .Prof2 = p2: .DistExtremos = de: .LongRef = lr
+        .NInicial = CLng(ni): .IncLong = il: .IncN = CLng(inn): .Tol = tl
+    End With
+    CfgGuarda
+    mMain.Recalcula
+End Sub
+
 ' Crea (una vez) una fila con casilla por tarugo
 Private Sub ConstruyeFilas()
     If nFilas = NFlat And nFilas > 0 Then Exit Sub
     Dim i As Long
+    ' si ya habia filas (recalculo con otro numero de tarugos) se eliminan antes
+    On Error Resume Next
+    For i = 0 To nFilas - 1
+        fraLista.Controls.Remove "chkF" & i
+    Next i
+    Erase chks: Erase filas
+    nFilas = 0
+    On Error GoTo 0
     ReDim chks(0 To NFlat)
     ReDim filas(0 To NFlat)
     For i = 0 To NFlat - 1

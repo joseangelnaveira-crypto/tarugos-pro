@@ -5,13 +5,21 @@ Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Eje
 ' documento activo: la ventana de revision no es modal y, si se cambia de documento, Piezas()
 ' y Uniones() serian de otro ensamblaje.
 Public AsmAnalizado As String
+' Datos de la ultima revision, para RECALCULAR desde la propia ventana de revision
+Private ultimoManual As Boolean
+Private ultimosNombres As Collection
 '==============================================================================
 ' FASE 3: previsualizacion 3D y edicion de tarugos (NO modifica las piezas).
 ' AUTOMATICO: sin nada seleccionado analiza todo el ensamblaje.
 ' MANUAL    : con 2 o mas componentes seleccionados, solo las uniones entre ellos.
 ' Ejecutar el procedimiento  Fase3_Revisar.
 '==============================================================================
-Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
+' Recalcula desde cero con los parametros actuales (boton RECALCULAR de la ventana de revision)
+Public Sub Recalcula()
+    Fase3_Revisar ultimoManual, True
+End Sub
+
+Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False, Optional ByVal recalc As Boolean = False)
     Dim swApp As SldWorks.SldWorks
     Set swApp = Application.SldWorks
     Dim md As SldWorks.ModelDoc2
@@ -33,7 +41,11 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
     Dim nombres As Collection
     Set nombres = New Collection
     Dim i As Long, n As Long, c As SldWorks.Component2
-    If manual Then
+    If manual And recalc Then
+        ' recalculo desde la ventana de revision: se reutilizan las piezas ya elegidas
+        If ultimosNombres Is Nothing Then frmRevision.Hide: Exit Sub
+        Set nombres = ultimosNombres
+    ElseIf manual Then
         n = sm.GetSelectedObjectCount2(-1)
         For i = 1 To n
             Set c = Nothing
@@ -59,6 +71,8 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
             Exit Sub
         End If
     End If
+    If Not recalc Then ultimoManual = manual
+    If manual And Not recalc Then Set ultimosNombres = nombres
 
     If md.GetType = swDocPART Then
         AnalizaPiezasDoc swApp, md          ' pieza multicuerpo: cada cuerpo solido es una pieza
@@ -67,8 +81,10 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
         Set asm = md
         AnalizaPiezas swApp, asm
     End If
+    If mOptim.Cancelado Then If recalc Then frmRevision.Hide
     If mOptim.Cancelado Then MsgBox "Analisis cancelado. No se ha modificado nada.", vbInformation, "Tarugos": Exit Sub
     DetectaUniones
+    If mOptim.Cancelado Then If recalc Then frmRevision.Hide
     If mOptim.Cancelado Then MsgBox "Analisis cancelado. No se ha modificado nada.", vbInformation, "Tarugos": Exit Sub
     Dim modo As String
     modo = "AUTOMATICO"
@@ -78,6 +94,7 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
     End If
     EscribeUniones md
     If NUniones = 0 Then
+        If recalc Then frmRevision.Hide
         MsgBox "No se han encontrado uniones (modo " & modo & ").", vbInformation, "Tarugos"
         Exit Sub
     End If
@@ -91,6 +108,7 @@ Public Sub Fase3_Revisar(Optional ByVal manual As Boolean = False)
     Eventos.Conecta md
     Set Formulario = frmRevision
     frmRevision.Caption = "Tarugos - Revision (" & modo & ")"
+    frmRevision.CargaParametros
     frmRevision.Refresca
     frmRevision.Show vbModeless
     DibujaTodo
