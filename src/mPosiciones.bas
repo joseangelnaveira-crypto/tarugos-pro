@@ -17,6 +17,9 @@ Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Eje
 Public NotaReparto As String
 
 Public Function NumTarugos(ByVal Lmm As Double) As Long
+    ' Regla del usuario: una union (tramo entre huecos) mas corta que el incremento de longitud
+    ' (300 mm por defecto) lleva UN solo tarugo, centrado.
+    If Lmm < Cfg.IncLong Then NumTarugos = 1: Exit Function
     If Lmm <= Cfg.LongRef Then
         NumTarugos = Cfg.NInicial
     Else
@@ -71,7 +74,9 @@ Public Function CalculaPosiciones(un As TUnion) As String
         If n <= 1 Then CalculaPosiciones = motivo: Exit Function
         n = n - 1
     Loop
-    If n < n0 Then
+    If n0 = 1 And Cfg.NInicial > 1 Then
+        NotaReparto = "Union de " & Format(Lmm, "0") & " mm (menos de " & Format(Cfg.IncLong, "0") & "): 1 tarugo centrado"
+    ElseIf n < n0 Then
         NotaReparto = "Union corta (" & Format(Lmm, "0") & " mm): " & n & " tarugo" & IIf(n = 1, "", "s") & _
                       " en lugar de " & n0 & IIf(n = 1, " (centrado)", "")
     End If
