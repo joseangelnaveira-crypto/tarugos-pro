@@ -612,6 +612,8 @@ Private Function BuscaCara(pmd As SldWorks.ModelDoc2, pp As TV3, nn As TV3, ByVa
     If IsEmpty(bodies) Then Exit Function
     Dim b As Long, f As SldWorks.Face2, bd As SldWorks.Body2
     Dim s As SldWorks.Surface, nf As TV3, pf As TV3, v As Variant, bx As Variant
+    Dim tolP As Double
+    tolP = MaxD(0.0002, Cfg.Tol * MM + 0.00001)      ' las piezas pueden estar separadas hasta la holgura configurada
     For b = 0 To UBound(bodies)
         Set bd = bodies(b)
         ' pieza multicuerpo: solo las caras del cuerpo que ES la pieza (dos cuerpos pueden tener
@@ -626,7 +628,7 @@ Private Function BuscaCara(pmd As SldWorks.ModelDoc2, pp As TV3, nn As TV3, ByVa
                 If VDot(nf, nn) > 0.999 Then
                     v = s.PlaneParams
                     pf = V3(v(3), v(4), v(5))
-                    If Abs(VDot(VSub(pf, pp), nn)) < 0.0002 Then
+                    If Abs(VDot(VSub(pf, pp), nn)) < tolP Then
                         bx = f.GetBox
                         If pp.X >= bx(0) - 0.0002 And pp.X <= bx(3) + 0.0002 And _
                            pp.Y >= bx(1) - 0.0002 And pp.Y <= bx(4) + 0.0002 And _
@@ -683,6 +685,20 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     Dim v0 As Double
     v0 = Volumen(md)
 
+    ' El punto del tarugo esta en el plano de contacto de la pieza 1; la cara de ESTA pieza puede
+    ' estar a unas decimas (holgura entre piezas). Se proyecta el punto sobre el plano de la cara.
+    Dim pp0 As TV3, sfc As SldWorks.Surface, pv As Variant
+    pp0 = pp
+    Set sfc = f.GetSurface
+    If Not sfc Is Nothing Then
+        If sfc.Identity = 4001 Then
+            pv = sfc.PlaneParams
+            Dim dd As Double
+            dd = VDot(VSub(V3(pv(3), pv(4), pv(5)), pp), nn)
+            pp = V3(pp.X + nn.X * dd, pp.Y + nn.Y * dd, pp.Z + nn.Z * dd)
+        End If
+    End If
+
     ' Se selecciona la cara por su posicion (SelectByID2); Face2.Select4 con caras de
     ' GetBodies2 selecciono una cara equivocada en las pruebas. Se verifica la normal.
     md.ClearSelection2 True
@@ -711,8 +727,12 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     Set m2s = sk.ModelToSketchTransform
     ps = TrP(m2s, pp)
     ' un punto del plano del croquis debe quedar con z = 0 en coordenadas de croquis;
-    ' si no, la transformacion devuelta va en el otro sentido
-    If Abs(ps.Z) > 0.00001 Then ps = TrP(m2s.Inverse, pp)
+    ' si no, la transformacion devuelta va en el otro sentido (se elige la de menor |z|)
+    If Abs(ps.Z) > 0.00001 Then
+        Dim ps2 As TV3
+        ps2 = TrP(m2s.Inverse, pp)
+        If Abs(ps2.Z) < Abs(ps.Z) Then ps = ps2
+    End If
     ' AddToDB: crear la entidad tal cual, SIN inferencias ni relaciones automaticas.
     ' Sin esto SolidWorks ajustaba el circulo a tangente con el borde de la cara
     ' (radio 9,5 mm en vez de 4 mm) y el corte fallaba por "geometria de espesor cero".
@@ -741,10 +761,12 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     quitado = v0 - v1
     esperado = 3.14159265358979 * (Cfg.Diametro * MM / 2) ^ 2 * jb.Prof
     feat.Name = jb.Nombre
-    mDuplicados.Marca feat, pp, nn, Cfg.Diametro, jb.Prof / MM
+    mDuplicados.Marca feat, pp0, nn, Cfg.Diametro, jb.Prof / MM
     Anota "      marca: " & mDuplicados.UltimoAdd & "  tipo=" & feat.GetTypeName2
     If Abs(quitado - esperado) > 0.05 * esperado Then
-        hayAviso = True
+        ' Menos volumen del esperado (el agujero roza un hueco o el borde) es aceptable; mucho mas, o casi
+        ' nada, indica que el corte ha ido a otro sitio y se bloquea el guardado.
+        If quitado > 1.05 * esperado Or quitado < 0.3 * esperado Then hayAviso = True
         Anota "AVISO " & jb.Nombre & ": volumen eliminado " & Format(quitado * 1E+09, "0.0") & " mm3, esperado " & Format(esperado * 1E+09, "0.0") & " mm3"
     Else
         Anota "OK    " & jb.Nombre & ": " & Format(quitado * 1E+09, "0.0") & " mm3 (esperado " & Format(esperado * 1E+09, "0.0") & ")"
