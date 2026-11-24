@@ -497,6 +497,7 @@ siguiente:
               "La pieza queda modificada solo en memoria: cierrala SIN guardar (hay copia de seguridad)."
         Exit Function
     End If
+    If creados > 0 Then AgrupaEnCarpeta act
     If creados + borrados > 0 Then
         Dim er As Long
         er = mGuardado.GuardaDoc(act)
@@ -780,6 +781,40 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     End If
     CreaTaladro = True
 End Function
+
+' Mete los cortes de tarugo (UNION_xxx_TARUGO_xxx...) que estan sueltos en el arbol dentro de una
+' carpeta "TARUGOS". Los croquis ya cuelgan de cada corte, asi que quedan dentro. Si falla solo se
+' avisa: los taladros ya estan hechos y no se pierde nada.
+Private Sub AgrupaEnCarpeta(md As SldWorks.ModelDoc2)
+    On Error GoTo fallo
+    Dim ft As SldWorks.Feature, n As Long, ok As Boolean
+    md.ClearSelection2 True
+    Set ft = md.FirstFeature
+    Do While Not ft Is Nothing
+        If Left(ft.Name, 6) = "UNION_" And InStr(ft.Name, "_TARUGO_") > 0 Then
+            ok = ft.Select2(n > 0, 0)
+            If ok Then n = n + 1
+        End If
+        Set ft = ft.GetNextFeature
+    Loop
+    If n = 0 Then Exit Sub
+    Dim fo As SldWorks.Feature
+    Set fo = md.FeatureManager.InsertFeatureTreeFolder2(swFeatureTreeFolder_Containing)
+    If fo Is Nothing Then
+        Anota "AVISO no se pudo crear la carpeta de tarugos (" & n & " cortes); quedan sueltos en el arbol"
+    Else
+        On Error Resume Next
+        fo.Name = "TARUGOS"
+        On Error GoTo 0
+        Anota "Carpeta de tarugos creada con " & n & " cortes"
+    End If
+    md.ClearSelection2 True
+    Exit Sub
+fallo:
+    Anota "AVISO error al crear la carpeta de tarugos: " & Err.Number & " - " & Err.Description
+    On Error Resume Next
+    md.ClearSelection2 True
+End Sub
 
 ' Elimina el ultimo croquis de la pieza (el que acaba de crear esta macro y no se uso)
 Private Sub BorraUltimoCroquis(md As SldWorks.ModelDoc2)
