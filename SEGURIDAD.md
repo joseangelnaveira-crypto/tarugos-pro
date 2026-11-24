@@ -6,7 +6,7 @@ Version revisada: ver `git log` (ultimo commit). Probada en SolidWorks 2024.
 ## 1. Alcance: que toca la macro
 - **Lee** la geometria del ensamblaje / pieza activos (API de SolidWorks).
 - **Escribe**, solo tras confirmacion expresa del usuario (cuadro "Continuar? Si/No", por defecto NO):
-  - cortes extruidos circulares (con su croquis) en los archivos de las piezas afectadas, agrupados en la carpeta `TARUGOS`;
+  - cortes extruidos circulares (con su croquis) en los archivos de las piezas afectadas, agrupados en la carpeta `TARUGOS MACRO`;
   - una carpeta `Respaldo_Tarugos_<fecha>` junto al ensamblaje con una copia de cada archivo ANTES de modificarlo, mas `Informe_Fase5.txt` e `Informe_Tarugos.csv`;
   - `Tarugos_Uniones.txt` (diagnostico de uniones) junto al documento (o en `%TEMP%` si no tiene ruta);
   - los ajustes del usuario (9 numeros) en `HKCU\Software\VB and VBA Program Settings\TarugosPro`.

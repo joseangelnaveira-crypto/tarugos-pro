@@ -793,7 +793,7 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
 End Function
 
 ' Mete los cortes de tarugo (UNION_xxx_TARUGO_xxx...) que estan sueltos en el arbol dentro de una
-' carpeta "TARUGOS". Los croquis ya cuelgan de cada corte, asi que quedan dentro. Si falla solo se
+' carpeta "TARUGOS MACRO". Los croquis ya cuelgan de cada corte, asi que quedan dentro. Si falla solo se
 ' avisa: los taladros ya estan hechos y no se pierde nada.
 Private Sub AgrupaEnCarpeta(md As SldWorks.ModelDoc2)
     On Error GoTo fallo
@@ -813,10 +813,26 @@ Private Sub AgrupaEnCarpeta(md As SldWorks.ModelDoc2)
     If fo Is Nothing Then
         Anota "AVISO no se pudo crear la carpeta de tarugos (" & n & " cortes); quedan sueltos en el arbol"
     Else
+        ' Nombre "TARUGOS MACRO". Dos carpetas no pueden llamarse igual: si la pieza ya tenia una
+        ' (mecanizado anterior) SolidWorks rechaza el nombre y la carpeta se quedaba como "Carpeta".
+        ' Se comprueba el nombre resultante y, si esta ocupado, se prueba con " 2", " 3"...
+        Dim nombreCarpeta As String, intento As Long
+        nombreCarpeta = "TARUGOS MACRO"
+        intento = 1
         On Error Resume Next
-        fo.Name = "TARUGOS"
+        Do
+            Err.Clear
+            fo.Name = nombreCarpeta
+            If Err.Number = 0 Then
+                If fo.Name = nombreCarpeta Then Exit Do
+            End If
+            intento = intento + 1
+            nombreCarpeta = "TARUGOS MACRO " & intento
+        Loop While intento <= 20
+        If fo.Name <> nombreCarpeta Then nombreCarpeta = fo.Name
         On Error GoTo 0
-        Anota "Carpeta de tarugos creada con " & n & " cortes"
+        Anota "Carpeta """ & nombreCarpeta & """ creada con " & n & " cortes"
+        If Left(nombreCarpeta, 13) <> "TARUGOS MACRO" Then Anota "AVISO la carpeta no se pudo renombrar; renombrala a mano si quieres"
     End If
     md.ClearSelection2 True
     Exit Sub
