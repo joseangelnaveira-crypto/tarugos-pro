@@ -23,7 +23,7 @@ Private Sub UserForm_Initialize()
     Dim etq As Variant, i As Long, l As MSForms.Label
     etq = Array("Diametro del tarugo (mm)", "Profundidad pieza 1 (mm)", "Profundidad pieza 2 (mm)", _
                 "Distancia a los extremos (mm)", "Longitud de referencia (mm)", "Numero inicial de tarugos", _
-                "Incremento de longitud (mm)", "Incremento de tarugos", "Tolerancia geometrica (mm)")
+                "Incremento de longitud (mm)", "Incremento de tarugos", "Holgura max. entre piezas (mm)")
     For i = 0 To 8
         Set l = Me.Controls.Add("Forms.Label.1", "l" & i, True)
         l.Caption = etq(i): l.Left = 12: l.Top = 12 + i * 22: l.Width = 220: l.Height = 16
@@ -75,6 +75,7 @@ Private Function Aplica() As Boolean
     Dim il As Double, inn As Double, tl As Double
     d = Num(0, 1, ok): p1 = Num(1, 1, ok): p2 = Num(2, 1, ok): de = Num(3, 0, ok)
     lr = Num(4, 1, ok): ni = Num(5, 1, ok): il = Num(6, 1, ok): inn = Num(7, 0, ok): tl = Num(8, 0.001, ok)
+    If tl > 5 Then MsgBox "La holgura maxima entre piezas no puede pasar de 5 mm.", vbExclamation, "Tarugos": Exit Function
     If Not ok Then MsgBox "Hay valores no validos (deben ser numeros positivos).", vbExclamation, "Tarugos": Exit Function
     If d > 30 Then MsgBox "El diametro parece demasiado grande (maximo 30 mm).", vbExclamation, "Tarugos": Exit Function
     With Cfg

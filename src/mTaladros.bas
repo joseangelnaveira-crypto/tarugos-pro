@@ -699,6 +699,7 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
         md.ClearSelection2 True
         f.Select4 False, Nothing
     End If
+    SnapshotCroquis md                 ' nombres de los croquis que ya hay (para reconocer el nuevo)
     md.SketchManager.InsertSketch True
     Dim sk As SldWorks.Sketch
     Set sk = md.SketchManager.ActiveSketch
@@ -728,7 +729,8 @@ Private Function CreaTaladro(md As SldWorks.ModelDoc2, f As SldWorks.Face2, pp A
     If feat Is Nothing Then Set feat = CortaCiego(md, jb.Prof, True, cuerpoPieza)      ' sentido contrario
     If feat Is Nothing Then
         Anota "ERROR " & jb.Nombre & ": el corte-extruido fallo (circulo en croquis: " & Format(ps.X * 1000, "0.0") & " ; " & _
-              Format(ps.Y * 1000, "0.0") & " ; " & Format(ps.Z * 1000, "0.0") & " mm)"
+              Format(ps.Y * 1000, "0.0") & " ; " & Format(ps.Z * 1000, "0.0") & " mm; croquis=" & NombreCroquisNuevo(md) & _
+              "; cuerpo=" & IIf(cuerpoPieza Is Nothing, "no", "si") & ")"
         BorraUltimoCroquis md          ' no dejar croquis huerfanos en la pieza
         Exit Function
     End If
@@ -751,12 +753,8 @@ End Function
 
 ' Elimina el ultimo croquis de la pieza (el que acaba de crear esta macro y no se uso)
 Private Sub BorraUltimoCroquis(md As SldWorks.ModelDoc2)
-    Dim ft As SldWorks.Feature, sf As SldWorks.Feature
-    Set ft = md.FirstFeature
-    Do While Not ft Is Nothing
-        If ft.GetTypeName2 = "ProfileFeature" Then Set sf = ft
-        Set ft = ft.GetNextFeature
-    Loop
+    Dim sf As SldWorks.Feature
+    Set sf = CroquisNuevo(md)
     If sf Is Nothing Then Exit Sub
     md.ClearSelection2 True
     sf.Select2 False, 0
@@ -764,13 +762,53 @@ Private Sub BorraUltimoCroquis(md As SldWorks.ModelDoc2)
     md.ClearSelection2 True
 End Sub
 
-Private Function CortaCiego(md As SldWorks.ModelDoc2, ByVal prof As Double, ByVal invierteSentido As Boolean, Optional cuerpo As SldWorks.Body2 = Nothing) As SldWorks.Feature
-    Dim ft As SldWorks.Feature, sf As SldWorks.Feature
+' Croquis que existian antes de abrir el nuevo. Asi se reconoce el croquis creado por la macro
+' aunque no sea el ultimo del arbol (barra de retroceso, croquis reordenados o dentro de carpetas).
+Private croquisPrevios As Collection
+
+Private Sub SnapshotCroquis(md As SldWorks.ModelDoc2)
+    Set croquisPrevios = New Collection
+    Dim ft As SldWorks.Feature
     Set ft = md.FirstFeature
+    On Error Resume Next
     Do While Not ft Is Nothing
-        If ft.GetTypeName2 = "ProfileFeature" Then Set sf = ft
+        If ft.GetTypeName2 = "ProfileFeature" Then croquisPrevios.Add True, "k" & ft.Name
         Set ft = ft.GetNextFeature
     Loop
+    On Error GoTo 0
+End Sub
+
+' El croquis (ProfileFeature) cuyo nombre no estaba en el snapshot; si no se encuentra, el ultimo.
+Private Function CroquisNuevo(md As SldWorks.ModelDoc2) As SldWorks.Feature
+    Dim ft As SldWorks.Feature, ultimo As SldWorks.Feature, nuevo As SldWorks.Feature, esta As Boolean
+    Set ft = md.FirstFeature
+    Do While Not ft Is Nothing
+        If ft.GetTypeName2 = "ProfileFeature" Then
+            Set ultimo = ft
+            esta = False
+            If Not croquisPrevios Is Nothing Then
+                On Error Resume Next
+                esta = croquisPrevios("k" & ft.Name)
+                If Err.Number <> 0 Then esta = False
+                Err.Clear
+                On Error GoTo 0
+            End If
+            If Not esta Then Set nuevo = ft
+        End If
+        Set ft = ft.GetNextFeature
+    Loop
+    If nuevo Is Nothing Then Set CroquisNuevo = ultimo Else Set CroquisNuevo = nuevo
+End Function
+
+Private Function NombreCroquisNuevo(md As SldWorks.ModelDoc2) As String
+    Dim f As SldWorks.Feature
+    Set f = CroquisNuevo(md)
+    If f Is Nothing Then NombreCroquisNuevo = "ninguno" Else NombreCroquisNuevo = f.Name
+End Function
+
+Private Function CortaCiego(md As SldWorks.ModelDoc2, ByVal prof As Double, ByVal invierteSentido As Boolean, Optional cuerpo As SldWorks.Body2 = Nothing) As SldWorks.Feature
+    Dim sf As SldWorks.Feature
+    Set sf = CroquisNuevo(md)
     If sf Is Nothing Then Exit Function
     md.ClearSelection2 True
     sf.Select2 False, 0

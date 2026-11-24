@@ -81,8 +81,8 @@ Private Sub ComparaPareja(a As Long, b As Long)
         For j = 0 To Piezas(b).NCaras - 1
             If VDot(Piezas(a).Caras(i).N, Piezas(b).Caras(j).N) < -Cfg.TolAngulo Then
                 gap = Abs(VDot(VSub(Piezas(b).Caras(j).P, Piezas(a).Caras(i).P), Piezas(a).Caras(i).N))
-                If gap <= 0.002 Then          ' hasta 2 mm: contacto o "casi contacto"
-                    If CarasCajaSolapa(Piezas(a).Caras(i), Piezas(b).Caras(j), 0.002) Then
+                If gap <= MaxD(0.002, Cfg.Tol * MM) Then          ' contacto o "casi contacto" (hasta la holgura configurada)
+                    If CarasCajaSolapa(Piezas(a).Caras(i), Piezas(b).Caras(j), MaxD(0.002, Cfg.Tol * MM)) Then
                         AnalizaContacto a, i, b, j, gap
                     End If
                 End If

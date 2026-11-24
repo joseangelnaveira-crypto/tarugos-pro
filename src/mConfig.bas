@@ -19,7 +19,7 @@ Public Type TConfig
     NInicial As Long
     IncLong As Double         ' mm
     IncN As Long
-    Tol As Double             ' mm  tolerancia geometrica
+    Tol As Double             ' mm  holgura maxima entre piezas para considerarlas en contacto
     AreaMinCara As Double     ' mm2 caras planas menores se ignoran
     MinMaterial As Double     ' mm  material minimo que debe quedar tras el taladro
     SepMinFactor As Double    ' separacion minima entre tarugos = factor x diametro
@@ -42,7 +42,7 @@ Public Sub CfgPorDefecto()
         .NInicial = CLng(Leido("NInicial", 3))
         .IncLong = Leido("IncLong", 300)
         .IncN = CLng(Leido("IncN", 1))
-        .Tol = Leido("Tol", 0.1)
+        .Tol = Leido("Tol", 0.5)
         .AreaMinCara = 100
         .MinMaterial = 3
         ' 6,25 x diametro = 50 mm con tarugos de 8: antes 3 (24 mm) y en uniones cortas salian tarugos
