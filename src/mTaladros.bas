@@ -1,6 +1,7 @@
 Attribute VB_Name = "mTaladros"
 Option Explicit
 Option Private Module   ' sus procedimientos no aparecen en la lista Macro > Ejecutar
+Private croquisPrevios As Collection          ' nombres de croquis previos (ver SnapshotCroquis)
 '==============================================================================
 ' mTaladros - FASES 4 y 5: taladros REALES en las piezas individuales.
 '
@@ -764,8 +765,6 @@ End Sub
 
 ' Croquis que existian antes de abrir el nuevo. Asi se reconoce el croquis creado por la macro
 ' aunque no sea el ultimo del arbol (barra de retroceso, croquis reordenados o dentro de carpetas).
-Private croquisPrevios As Collection
-
 Private Sub SnapshotCroquis(md As SldWorks.ModelDoc2)
     Set croquisPrevios = New Collection
     Dim ft As SldWorks.Feature

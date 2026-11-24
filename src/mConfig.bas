@@ -42,7 +42,7 @@ Public Sub CfgPorDefecto()
         .NInicial = CLng(Leido("NInicial", 3))
         .IncLong = Leido("IncLong", 300)
         .IncN = CLng(Leido("IncN", 1))
-        .Tol = Leido("Tol", 0.5)
+        .Tol = Leido("Tol", 0.2)
         .AreaMinCara = 100
         .MinMaterial = 3
         ' 6,25 x diametro = 50 mm con tarugos de 8: antes 3 (24 mm) y en uniones cortas salian tarugos

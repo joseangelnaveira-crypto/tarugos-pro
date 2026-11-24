@@ -259,7 +259,7 @@ Private Sub AnalizaContacto(a As Long, i As Long, b As Long, j As Long, ByVal ga
     End If
 
     ' ---- piezas proximas pero no unidas ----
-    If gap > Cfg.Tol * MM Then
+    If gap > Cfg.Tol * MM + 0.000001 Then
         un.Estado = "DESCARTADA"
         un.Motivo = AnadeMotivo(un.Motivo, "Caras paralelas separadas " & Format(gap * 1000, "0.00") & " mm: no estan en contacto")
     End If
